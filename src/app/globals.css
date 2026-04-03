@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+/*
+ * =============================================================================
+ * Angsana Exchange — CSS Custom Properties
+ * =============================================================================
+ * All colours are defined here as CSS variables. Components use these via
+ * var(--primary) etc. — never hardcoded hex values.
+ *
+ * The ThemeProvider can override these at runtime for white-labelling.
+ * =============================================================================
+ */
+
+:root {
+  /* Brand colours */
+  --primary: #004156;
+  --secondary: #3B7584;
+  --muted: #827786;
+  --accent-gold: #FCB242;
+  --accent-cyan: #00A6CE;
+  --accent-green: #30BAA0;
+  --accent-magenta: #EC1E65;
+
+  /* Backgrounds */
+  --background-dark: #3B4A55;
+  --background: #FFFFFF;
+  --foreground: #1A1A1A;
+}
+
+/*
+ * Base styles
+ */
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-quicksand), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
