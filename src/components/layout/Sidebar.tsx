@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import Image from 'next/image';
 import {
   LayoutDashboard,
   ClipboardCheck,
@@ -28,13 +27,11 @@ export function Sidebar() {
     <aside className="flex h-screen w-64 flex-col bg-[var(--primary)] text-white">
       {/* Logo */}
       <div className="flex h-16 items-center px-6">
-        <Image
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
           src={defaultTheme.logoReversedPath}
           alt={defaultTheme.name}
-          width={160}
-          height={40}
           className="h-8 w-auto"
-          priority
         />
       </div>
 

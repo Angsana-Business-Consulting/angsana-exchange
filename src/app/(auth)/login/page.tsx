@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/lib/firebase/client';
@@ -36,13 +35,11 @@ export default function LoginPage() {
       <div className="w-full max-w-sm space-y-8 px-6">
         {/* Logo */}
         <div className="flex justify-center">
-          <Image
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
             src={defaultTheme.logoReversedPath}
             alt={defaultTheme.name}
-            width={240}
-            height={60}
             className="h-12 w-auto"
-            priority
           />
         </div>
 
