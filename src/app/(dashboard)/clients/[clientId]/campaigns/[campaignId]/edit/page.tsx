@@ -1,19 +1,17 @@
 import { adminDb } from '@/lib/firebase/admin';
-import { getUserContext, hasClientAccess } from '@/lib/auth/server';
+import { getUserContext, hasClientAccess, isInternalRole } from '@/lib/auth/server';
 import { redirect } from 'next/navigation';
-import { CampaignDetailClient } from './CampaignDetailClient';
+import { CampaignForm } from '../../CampaignForm';
 import type { Campaign, ManagedListItem } from '@/types';
 
 /**
- * Campaign Detail Page — /clients/[clientId]/campaigns/[campaignId]
+ * Campaign Edit Page — /clients/[clientId]/campaigns/[campaignId]/edit
  *
- * Server component that:
- * 1. Verifies the user has access to this client
- * 2. Fetches the campaign document from Firestore
- * 3. Fetches managed lists for label lookups
- * 4. Passes data to the client component for display and interactions
+ * Full page form pre-populated with current campaign values.
+ * Only internal-user and internal-admin can access.
+ * Completed campaigns cannot be edited.
  */
-export default async function CampaignDetailPage({
+export default async function CampaignEditPage({
   params,
 }: {
   params: Promise<{ clientId: string; campaignId: string }>;
@@ -22,7 +20,11 @@ export default async function CampaignDetailPage({
   const user = await getUserContext();
   const { tenantId } = user.claims;
 
-  // Access check
+  // Only internal users can edit
+  if (!isInternalRole(user.claims.role)) {
+    redirect(`/clients/${clientId}/campaigns/${campaignId}`);
+  }
+
   if (!hasClientAccess(user.claims, clientId)) {
     redirect('/');
   }
@@ -42,6 +44,12 @@ export default async function CampaignDetailPage({
   }
 
   const data = campaignDoc.data()!;
+
+  // Cannot edit completed campaigns
+  if (data.status === 'completed') {
+    redirect(`/clients/${clientId}/campaigns/${campaignId}`);
+  }
+
   const campaign: Campaign = {
     id: campaignDoc.id,
     campaignName: data.campaignName || '',
@@ -58,13 +66,7 @@ export default async function CampaignDetailPage({
     valueProposition: data.valueProposition || '',
     painPoints: data.painPoints || [],
     selectedSoWhats: data.selectedSoWhats || [],
-    statusHistory: (data.statusHistory || []).map((entry: Record<string, unknown>) => ({
-      from: (entry.from as string) || null,
-      to: (entry.to as string) || 'draft',
-      timestamp: (entry.timestamp as string) || '',
-      changedBy: (entry.changedBy as string) || '',
-      reason: (entry.reason as string) || undefined,
-    })),
+    statusHistory: data.statusHistory || [],
     pauseReason: data.pauseReason || '',
     createdBy: data.createdBy || '',
     createdAt: data.createdAt?.toDate?.()?.toISOString() || '',
@@ -83,8 +85,8 @@ export default async function CampaignDetailPage({
     ? (clientDoc.data()?.name as string) || clientId
     : clientId;
 
-  // Fetch managed lists for label lookups
-  const listNames = ['geographies', 'sectors', 'titleBands', 'companySizes', 'serviceTypes'];
+  // Fetch managed lists
+  const listNames = ['serviceTypes', 'geographies', 'sectors', 'titleBands', 'companySizes'];
   const listDocs = await Promise.all(
     listNames.map((name) =>
       adminDb
@@ -103,17 +105,13 @@ export default async function CampaignDetailPage({
       : [];
   });
 
-  const isInternal =
-    user.claims.role === 'internal-admin' || user.claims.role === 'internal-user';
-
   return (
-    <CampaignDetailClient
-      campaign={campaign}
+    <CampaignForm
+      mode="edit"
       clientId={clientId}
       clientName={clientName}
       managedLists={managedLists}
-      isInternal={isInternal}
-      userEmail={user.email}
+      initialData={campaign}
     />
   );
 }

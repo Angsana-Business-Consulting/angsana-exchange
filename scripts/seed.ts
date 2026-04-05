@@ -1,11 +1,11 @@
 #!/usr/bin/env npx tsx
 /**
- * Angsana Exchange — Slice 1 Seed Script
+ * Angsana Exchange — Slice 2 Seed Script
  *
- * Creates everything needed for a working Slice 1 environment:
+ * Creates everything needed for a working Slice 2 environment:
  *   1. Firebase Auth users (4 test users with displayNames)
  *   2. Custom claims on each user (tenantId, role, clientId, assignedClients, permittedModules)
- *   3. Firestore structure: tenant config, managed lists, clients, campaigns
+ *   3. Firestore structure: tenant config, managed lists (all 6), clients, campaigns with targeting
  *
  * Idempotent: safe to re-run. Existing users are updated, Firestore docs are overwritten.
  *
@@ -19,7 +19,7 @@
 
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 
 // =============================================================================
 // Configuration
@@ -196,6 +196,7 @@ async function seedFirestore() {
   console.log('  Seeding managed lists...');
   const managedListsRef = tenantRef.collection('managedLists');
 
+  // 6.1 serviceTypes (7 items per spec)
   await managedListsRef.doc('serviceTypes').set({
     items: [
       { id: 'lg-new', label: 'Lead Gen — New Business', active: true },
@@ -207,59 +208,100 @@ async function seedFirestore() {
       { id: 'research', label: 'Market Research', active: true },
     ],
     updatedAt: now,
+    updatedBy: 'seed-script',
   });
+  console.log('    ✓ serviceTypes (7 items)');
 
+  // 6.2 sectors (10 items per spec)
   await managedListsRef.doc('sectors').set({
     items: [
-      { id: 'fashion-retail', label: 'Fashion Retail', active: true },
-      { id: 'luxury', label: 'Luxury', active: true },
-      { id: 'outdoor-sportswear', label: 'Outdoor & Sportswear', active: true },
-      { id: 'food-beverage', label: 'Food & Beverage', active: true },
-      { id: 'health-beauty', label: 'Health & Beauty', active: true },
-      { id: 'home-garden', label: 'Home & Garden', active: true },
       { id: 'technology', label: 'Technology', active: true },
       { id: 'financial-services', label: 'Financial Services', active: true },
-      { id: 'professional-services', label: 'Professional Services', active: true },
+      { id: 'healthcare-life-sciences', label: 'Healthcare & Life Sciences', active: true },
+      { id: 'retail-consumer', label: 'Retail & Consumer', active: true },
       { id: 'manufacturing', label: 'Manufacturing', active: true },
+      { id: 'professional-services', label: 'Professional Services', active: true },
+      { id: 'energy-utilities', label: 'Energy & Utilities', active: true },
+      { id: 'media-telecoms', label: 'Media & Telecoms', active: true },
+      { id: 'public-sector', label: 'Public Sector', active: true },
+      { id: 'education', label: 'Education', active: true },
     ],
     updatedAt: now,
+    updatedBy: 'seed-script',
   });
+  console.log('    ✓ sectors (10 items)');
 
+  // 6.3 geographies (12 items per spec)
   await managedListsRef.doc('geographies').set({
     items: [
-      { id: 'spain', label: 'Spain', active: true },
-      { id: 'portugal', label: 'Portugal', active: true },
-      { id: 'uk', label: 'United Kingdom', active: true },
-      { id: 'france', label: 'France', active: true },
-      { id: 'germany', label: 'Germany', active: true },
-      { id: 'italy', label: 'Italy', active: true },
+      { id: 'uk', label: 'UK', active: true },
+      { id: 'ireland', label: 'Ireland', active: true },
+      { id: 'dach', label: 'DACH (Germany/Austria/Switzerland)', active: true },
       { id: 'nordics', label: 'Nordics', active: true },
       { id: 'benelux', label: 'Benelux', active: true },
-      { id: 'usa', label: 'United States', active: true },
+      { id: 'france', label: 'France', active: true },
+      { id: 'iberia', label: 'Iberia (Spain/Portugal)', active: true },
+      { id: 'italy', label: 'Italy', active: true },
+      { id: 'cee', label: 'Central & Eastern Europe', active: true },
+      { id: 'middle-east', label: 'Middle East', active: true },
+      { id: 'north-america', label: 'North America', active: true },
+      { id: 'apac', label: 'APAC', active: true },
     ],
     updatedAt: now,
+    updatedBy: 'seed-script',
   });
+  console.log('    ✓ geographies (12 items)');
 
+  // 6.4 titleBands (11 items per spec, with orientation)
   await managedListsRef.doc('titleBands').set({
     items: [
-      { id: 'c-suite', label: 'C-Suite', active: true },
-      { id: 'vp', label: 'VP / SVP', active: true },
-      { id: 'director', label: 'Director', active: true },
-      { id: 'head-of', label: 'Head of', active: true },
-      { id: 'manager', label: 'Manager', active: true },
+      { id: 'cto-cio-cdo', label: 'CTO / CIO / CDO', orientation: 'external', active: true },
+      { id: 'cfo-finance-director', label: 'CFO / Finance Director', orientation: 'internal', active: true },
+      { id: 'vp-director-it', label: 'VP / Director of IT', orientation: 'external', active: true },
+      { id: 'vp-director-marketing', label: 'VP / Director of Marketing', orientation: 'external', active: true },
+      { id: 'vp-director-sales', label: 'VP / Director of Sales', orientation: 'external', active: true },
+      { id: 'vp-director-operations', label: 'VP / Director of Operations', orientation: 'internal', active: true },
+      { id: 'vp-director-hr', label: 'VP / Director of HR', orientation: 'internal', active: true },
+      { id: 'vp-director-procurement', label: 'VP / Director of Procurement', orientation: 'internal', active: true },
+      { id: 'head-digital-transformation', label: 'Head of Digital / Transformation', orientation: 'mixed', active: true },
+      { id: 'managing-director-gm', label: 'Managing Director / GM', orientation: 'mixed', active: true },
+      { id: 'c-suite-ceo-coo', label: 'C-Suite (CEO, COO)', orientation: 'mixed', active: true },
     ],
     updatedAt: now,
+    updatedBy: 'seed-script',
   });
+  console.log('    ✓ titleBands (11 items)');
 
+  // 6.5 companySizes (4 items per spec)
   await managedListsRef.doc('companySizes').set({
     items: [
-      { id: 'enterprise', label: 'Enterprise (5000+)', active: true },
-      { id: 'mid-market', label: 'Mid-Market (500–5000)', active: true },
-      { id: 'smb', label: 'SMB (50–500)', active: true },
-      { id: 'startup', label: 'Startup (<50)', active: true },
+      { id: 'enterprise', label: 'Enterprise (5000+ employees)', active: true },
+      { id: 'large-mid-market', label: 'Large Mid-Market (1000–5000)', active: true },
+      { id: 'mid-market', label: 'Mid-Market (250–1000)', active: true },
+      { id: 'upper-sme', label: 'Upper SME (50–250)', active: true },
     ],
     updatedAt: now,
+    updatedBy: 'seed-script',
   });
+  console.log('    ✓ companySizes (4 items)');
+
+  // 6.6 therapyAreas (9 items per spec)
+  await managedListsRef.doc('therapyAreas').set({
+    items: [
+      { id: 'oncology', label: 'Oncology', active: true },
+      { id: 'cardiology', label: 'Cardiology', active: true },
+      { id: 'neurology', label: 'Neurology', active: true },
+      { id: 'immunology', label: 'Immunology', active: true },
+      { id: 'rare-disease', label: 'Rare Disease', active: true },
+      { id: 'respiratory', label: 'Respiratory', active: true },
+      { id: 'diabetes-metabolic', label: 'Diabetes & Metabolic', active: true },
+      { id: 'vaccines', label: 'Vaccines', active: true },
+      { id: 'cell-gene-therapy', label: 'Cell & Gene Therapy', active: true },
+    ],
+    updatedAt: now,
+    updatedBy: 'seed-script',
+  });
+  console.log('    ✓ therapyAreas (9 items)');
 
   // --- Client: Cegid Spain (full, with campaigns) ---
   console.log('  Seeding client: cegid-spain...');
@@ -277,7 +319,7 @@ async function seedFirestore() {
     updatedAt: now,
   });
 
-  // Campaigns for Cegid Spain
+  // 6.7 Campaigns for Cegid Spain — updated with targeting fields and status history
   console.log('  Seeding campaigns for cegid-spain...');
   const campaignsRef = cegidRef.collection('campaigns');
 
@@ -293,9 +335,26 @@ async function seedFirestore() {
         startDate: Timestamp.fromDate(new Date('2025-12-18')),
         campaignSummary:
           'Targeting CTO/CIO/Digital leaders at fashion and luxury retailers in Spain and Portugal for Cegid unified commerce platform.',
-        targetGeographies: ['Spain', 'Portugal'],
-        targetSectors: ['Fashion Retail', 'Luxury'],
-        targetTitles: ['CTO', 'CIO', 'Digital', 'Operations'],
+        // Targeting (Slice 2)
+        targetGeographies: ['iberia'],
+        targetSectors: ['retail-consumer'],
+        targetTitles: ['cto-cio-cdo', 'vp-director-it', 'head-digital-transformation'],
+        companySize: 'large-mid-market',
+        // Messaging
+        valueProposition: 'Unified commerce platform replacing legacy POS with real-time inventory and clienteling across channels.',
+        painPoints: [
+          'Fragmented POS systems across stores',
+          'No real-time inventory visibility',
+          'Poor omnichannel customer experience',
+        ],
+        selectedSoWhats: [],
+        // Lifecycle
+        statusHistory: [
+          { from: null, to: 'draft', timestamp: new Date('2025-12-10').toISOString(), changedBy: 'mike@angsana.com' },
+          { from: 'draft', to: 'active', timestamp: new Date('2025-12-18').toISOString(), changedBy: 'mike@angsana.com' },
+        ],
+        pauseReason: '',
+        createdBy: 'mike@angsana.com',
         createdAt: Timestamp.fromDate(new Date('2025-12-10')),
         updatedAt: now,
       },
@@ -311,9 +370,25 @@ async function seedFirestore() {
         startDate: Timestamp.fromDate(new Date('2026-01-15')),
         campaignSummary:
           'Same proposition targeting outdoor, sportswear, and activewear retailers across Iberia.',
-        targetGeographies: ['Spain', 'Portugal'],
-        targetSectors: ['Outdoor & Sportswear'],
-        targetTitles: ['CTO', 'CIO', 'Digital', 'Operations'],
+        // Targeting (Slice 2)
+        targetGeographies: ['iberia'],
+        targetSectors: ['retail-consumer'],
+        targetTitles: ['cto-cio-cdo', 'vp-director-it'],
+        companySize: 'mid-market',
+        // Messaging
+        valueProposition: 'Cloud-native retail management for sportswear and outdoor brands scaling across Iberia.',
+        painPoints: [
+          'Seasonal inventory challenges',
+          'Disconnected e-commerce and physical store systems',
+        ],
+        selectedSoWhats: [],
+        // Lifecycle
+        statusHistory: [
+          { from: null, to: 'draft', timestamp: new Date('2026-01-08').toISOString(), changedBy: 'mike@angsana.com' },
+          { from: 'draft', to: 'active', timestamp: new Date('2026-01-15').toISOString(), changedBy: 'mike@angsana.com' },
+        ],
+        pauseReason: '',
+        createdBy: 'mike@angsana.com',
         createdAt: Timestamp.fromDate(new Date('2026-01-08')),
         updatedAt: now,
       },
@@ -329,9 +404,21 @@ async function seedFirestore() {
         startDate: Timestamp.fromDate(new Date('2026-02-20')),
         campaignSummary:
           'Follow-up outreach to attendees of the 2026 Retail Forum event. Speaker-led content positioning.',
-        targetGeographies: ['Spain'],
-        targetSectors: ['Fashion Retail', 'Luxury', 'Outdoor & Sportswear'],
-        targetTitles: ['CTO', 'CIO', 'CEO'],
+        // Targeting (Slice 2)
+        targetGeographies: ['iberia'],
+        targetSectors: ['retail-consumer'],
+        targetTitles: ['cto-cio-cdo', 'managing-director-gm', 'vp-director-marketing'],
+        companySize: 'large-mid-market',
+        // Messaging
+        valueProposition: '',
+        painPoints: [],
+        selectedSoWhats: [],
+        // Lifecycle
+        statusHistory: [
+          { from: null, to: 'draft', timestamp: new Date('2026-02-01').toISOString(), changedBy: 'mike@angsana.com' },
+        ],
+        pauseReason: '',
+        createdBy: 'mike@angsana.com',
         createdAt: Timestamp.fromDate(new Date('2026-02-01')),
         updatedAt: now,
       },
@@ -367,7 +454,7 @@ async function seedFirestore() {
 async function main() {
   console.log('');
   console.log('╔══════════════════════════════════════════════╗');
-  console.log('║  Angsana Exchange — Slice 1 Seed Script      ║');
+  console.log('║  Angsana Exchange — Slice 2 Seed Script      ║');
   console.log('╚══════════════════════════════════════════════╝');
   console.log('');
 
@@ -384,6 +471,10 @@ async function main() {
   console.log('');
 
   console.log('✅ Seed complete!');
+  console.log('');
+  console.log('Managed lists seeded:');
+  console.log('  serviceTypes (7), sectors (10), geographies (12),');
+  console.log('  titleBands (11), companySizes (4), therapyAreas (9)');
   console.log('');
   console.log('Test accounts (password: Exchange2026!):');
   for (const user of TEST_USERS) {

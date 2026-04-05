@@ -105,8 +105,33 @@ export interface ClientConfig {
   logoPath: string | null;
 }
 
+// =============================================================================
+// Status History
+// =============================================================================
+
+/**
+ * A single entry in a campaign's status history timeline.
+ */
+export interface StatusHistoryEntry {
+  /** Previous status (null for initial creation) */
+  from: Campaign['status'] | null;
+  /** New status */
+  to: Campaign['status'];
+  /** ISO timestamp of the transition */
+  timestamp: string;
+  /** User ID or email who made the change */
+  changedBy: string;
+  /** Reason for the transition (required for pause) */
+  reason?: string;
+}
+
+// =============================================================================
+// Campaign
+// =============================================================================
+
 /**
  * Campaign document from Firestore.
+ * Extended in Slice 2 with targeting, messaging, and status history.
  */
 export interface Campaign {
   /** Document ID */
@@ -123,14 +148,34 @@ export interface Campaign {
   owner: string;
   /** Campaign start date (ISO string for client-side use) */
   startDate: string;
-  /** One-line campaign summary */
+  /** One-line campaign summary (max 280 chars) */
   campaignSummary: string;
-  /** Target geographies */
+
+  // --- Targeting ---
+  /** Target geography IDs (from managedLists/geographies) */
   targetGeographies: string[];
-  /** Target sectors */
+  /** Target sector IDs (from managedLists/sectors) */
   targetSectors: string[];
-  /** Target job titles */
+  /** Target title band IDs (from managedLists/titleBands) */
   targetTitles: string[];
+  /** Target company size ID (from managedLists/companySizes) */
+  companySize: string;
+
+  // --- Messaging ---
+  /** Value proposition text (max 200 chars) */
+  valueProposition: string;
+  /** Array of pain point strings (each max 150 chars, max 8 items) */
+  painPoints: string[];
+  /** Selected So What IDs (placeholder for future slice) */
+  selectedSoWhats: string[];
+
+  // --- Lifecycle ---
+  /** Status transition history */
+  statusHistory: StatusHistoryEntry[];
+  /** Reason for pausing (when status is paused) */
+  pauseReason: string;
+  /** Who created the campaign */
+  createdBy: string;
   /** Created timestamp (ISO string) */
   createdAt: string;
   /** Last updated timestamp (ISO string) */
@@ -148,4 +193,85 @@ export const CAMPAIGN_STATUS_CONFIG: Record<
   active: { label: 'Active', colour: '#059669', bgColour: '#ECFDF5' },
   paused: { label: 'Paused', colour: '#D97706', bgColour: '#FFFBEB' },
   completed: { label: 'Completed', colour: '#4B5563', bgColour: '#F9FAFB' },
+};
+
+// =============================================================================
+// Managed Lists
+// =============================================================================
+
+/**
+ * Known managed list names.
+ */
+export type ManagedListName =
+  | 'serviceTypes'
+  | 'sectors'
+  | 'geographies'
+  | 'titleBands'
+  | 'companySizes'
+  | 'therapyAreas';
+
+/**
+ * A single item within a managed list.
+ */
+export interface ManagedListItem {
+  /** Unique slug ID (immutable once created) */
+  id: string;
+  /** Display label */
+  label: string;
+  /** Whether this item is active (inactive items are hidden from dropdowns) */
+  active: boolean;
+  /** For titleBands: orientation tag */
+  orientation?: 'internal' | 'external' | 'mixed';
+}
+
+/**
+ * A managed list document from Firestore.
+ * Stored at tenants/{tenantId}/managedLists/{listName}
+ */
+export interface ManagedListDoc {
+  /** The items in this list */
+  items: ManagedListItem[];
+  /** Last updated timestamp (ISO string) */
+  updatedAt: string;
+  /** Who last updated the list */
+  updatedBy?: string;
+}
+
+/**
+ * Display configuration for managed list types in the admin UI.
+ */
+export const MANAGED_LIST_CONFIG: Record<
+  ManagedListName,
+  { label: string; description: string; hasOrientation: boolean }
+> = {
+  serviceTypes: {
+    label: 'Service Types',
+    description: 'What Angsana does — e.g. Lead Gen, ABM, Event Follow-Up',
+    hasOrientation: false,
+  },
+  sectors: {
+    label: 'Sectors',
+    description: 'Industry verticals — e.g. Technology, Financial Services',
+    hasOrientation: false,
+  },
+  geographies: {
+    label: 'Geographies',
+    description: 'Target regions — e.g. UK, DACH, Nordics',
+    hasOrientation: false,
+  },
+  titleBands: {
+    label: 'Title Bands',
+    description: 'Job title categories with internal/external orientation',
+    hasOrientation: true,
+  },
+  companySizes: {
+    label: 'Company Sizes',
+    description: 'Revenue/employee bands — e.g. Enterprise, Mid-Market',
+    hasOrientation: false,
+  },
+  therapyAreas: {
+    label: 'Therapy Areas',
+    description: 'For healthcare & life sciences clients',
+    hasOrientation: false,
+  },
 };

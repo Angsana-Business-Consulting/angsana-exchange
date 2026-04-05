@@ -1,0 +1,540 @@
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { ArrowLeft, Plus, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import type { Campaign, ManagedListItem } from '@/types';
+
+// =============================================================================
+// Multi-select chips component
+// =============================================================================
+
+function MultiSelectChips({
+  label,
+  options,
+  selected,
+  onChange,
+}: {
+  label: string;
+  options: ManagedListItem[];
+  selected: string[];
+  onChange: (selected: string[]) => void;
+}) {
+  const [showDropdown, setShowDropdown] = useState(false);
+  const activeOptions = options.filter((o) => o.active);
+  const available = activeOptions.filter((o) => !selected.includes(o.id));
+
+  function addItem(id: string) {
+    onChange([...selected, id]);
+    setShowDropdown(false);
+  }
+
+  function removeItem(id: string) {
+    onChange(selected.filter((s) => s !== id));
+  }
+
+  function getLabel(id: string) {
+    return options.find((o) => o.id === id)?.label || id;
+  }
+
+  function getOrientation(id: string) {
+    return options.find((o) => o.id === id)?.orientation;
+  }
+
+  return (
+    <div>
+      <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">
+        {label}
+      </label>
+
+      {/* Selected chips */}
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {selected.map((id) => {
+          const orientation = getOrientation(id);
+          return (
+            <span
+              key={id}
+              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-xs font-medium text-gray-700"
+            >
+              {getLabel(id)}
+              {orientation && (
+                <span className="text-[10px] opacity-60">({orientation})</span>
+              )}
+              <button
+                type="button"
+                onClick={() => removeItem(id)}
+                className="ml-0.5 hover:text-red-600"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          );
+        })}
+      </div>
+
+      {/* Add button/dropdown */}
+      <div className="relative">
+        {showDropdown ? (
+          <div className="rounded-md border border-gray-200 bg-white shadow-lg max-h-48 overflow-y-auto">
+            {available.length > 0 ? (
+              available.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => addItem(option.id)}
+                  className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50"
+                >
+                  {option.label}
+                  {option.orientation && (
+                    <span className="ml-1 text-xs text-[var(--muted)]">
+                      ({option.orientation})
+                    </span>
+                  )}
+                </button>
+              ))
+            ) : (
+              <p className="px-3 py-2 text-sm text-[var(--muted)]">All items selected</p>
+            )}
+            <div className="border-t border-gray-100 p-1">
+              <button
+                type="button"
+                onClick={() => setShowDropdown(false)}
+                className="w-full px-2 py-1 text-xs text-[var(--muted)] hover:text-[var(--foreground)]"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowDropdown(true)}
+            className="inline-flex items-center gap-1 rounded-md border border-dashed border-gray-300 px-2 py-1 text-xs text-[var(--muted)] hover:border-gray-400 hover:text-[var(--foreground)]"
+          >
+            <Plus className="h-3 w-3" />
+            Add
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Pain Points Editor
+// =============================================================================
+
+function PainPointsEditor({
+  painPoints,
+  onChange,
+}: {
+  painPoints: string[];
+  onChange: (points: string[]) => void;
+}) {
+  function addPoint() {
+    if (painPoints.length >= 8) return;
+    onChange([...painPoints, '']);
+  }
+
+  function updatePoint(index: number, value: string) {
+    const updated = [...painPoints];
+    updated[index] = value;
+    onChange(updated);
+  }
+
+  function removePoint(index: number) {
+    onChange(painPoints.filter((_, i) => i !== index));
+  }
+
+  return (
+    <div>
+      <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">
+        Pain Points <span className="text-[var(--muted)] font-normal">(optional, max 8)</span>
+      </label>
+      <div className="space-y-2">
+        {painPoints.map((point, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <Input
+              value={point}
+              onChange={(e) => updatePoint(i, e.target.value)}
+              maxLength={150}
+              placeholder={`Pain point ${i + 1}...`}
+              className="h-8 text-sm"
+            />
+            <span className="text-xs text-[var(--muted)] whitespace-nowrap">
+              {150 - point.length}
+            </span>
+            <button
+              type="button"
+              onClick={() => removePoint(i)}
+              className="text-[var(--muted)] hover:text-red-600"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        ))}
+      </div>
+      {painPoints.length < 8 && (
+        <button
+          type="button"
+          onClick={addPoint}
+          className="mt-2 inline-flex items-center gap-1 text-xs text-[var(--muted)] hover:text-[var(--foreground)]"
+        >
+          <Plus className="h-3 w-3" />
+          Add pain point
+        </button>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
+// Main Form Component
+// =============================================================================
+
+interface CampaignFormProps {
+  mode: 'create' | 'edit';
+  clientId: string;
+  clientName: string;
+  managedLists: Record<string, ManagedListItem[]>;
+  initialData?: Campaign;
+}
+
+export function CampaignForm({
+  mode,
+  clientId,
+  clientName,
+  managedLists,
+  initialData,
+}: CampaignFormProps) {
+  const router = useRouter();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  // Form state
+  const [campaignName, setCampaignName] = useState(initialData?.campaignName || '');
+  const [campaignSummary, setCampaignSummary] = useState(initialData?.campaignSummary || '');
+  const [serviceTypeId, setServiceTypeId] = useState(initialData?.serviceTypeId || '');
+  const [owner, setOwner] = useState(initialData?.owner || '');
+  const [startDate, setStartDate] = useState(
+    initialData?.startDate
+      ? new Date(initialData.startDate).toISOString().split('T')[0]
+      : ''
+  );
+  const [targetGeographies, setTargetGeographies] = useState<string[]>(
+    initialData?.targetGeographies || []
+  );
+  const [targetSectors, setTargetSectors] = useState<string[]>(
+    initialData?.targetSectors || []
+  );
+  const [targetTitles, setTargetTitles] = useState<string[]>(
+    initialData?.targetTitles || []
+  );
+  const [companySize, setCompanySize] = useState(initialData?.companySize || '');
+  const [valueProposition, setValueProposition] = useState(
+    initialData?.valueProposition || ''
+  );
+  const [painPoints, setPainPoints] = useState<string[]>(
+    initialData?.painPoints || []
+  );
+
+  // Get service type label from id
+  function getServiceTypeLabel(id: string): string {
+    const item = (managedLists.serviceTypes || []).find((i) => i.id === id);
+    return item ? item.label : '';
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    setSaving(true);
+
+    try {
+      const serviceType = getServiceTypeLabel(serviceTypeId);
+
+      const payload = {
+        campaignName,
+        campaignSummary,
+        serviceType,
+        serviceTypeId,
+        owner,
+        startDate,
+        targetGeographies,
+        targetSectors,
+        targetTitles,
+        companySize,
+        valueProposition,
+        painPoints: painPoints.filter((p) => p.trim() !== ''),
+      };
+
+      if (mode === 'create') {
+        const res = await fetch(`/api/clients/${clientId}/campaigns`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to create campaign');
+        }
+
+        const result = await res.json();
+        router.push(`/clients/${clientId}/campaigns/${result.id}`);
+      } else {
+        const res = await fetch(
+          `/api/clients/${clientId}/campaigns/${initialData!.id}`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          }
+        );
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to update campaign');
+        }
+
+        router.push(`/clients/${clientId}/campaigns/${initialData!.id}`);
+        router.refresh();
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'An error occurred';
+      setError(msg);
+      setSaving(false);
+    }
+  }
+
+  const activeServiceTypes = (managedLists.serviceTypes || []).filter((i) => i.active);
+  const activeCompanySizes = (managedLists.companySizes || []).filter((i) => i.active);
+
+  return (
+    <div className="max-w-3xl">
+      {/* Back link */}
+      <Link
+        href={
+          mode === 'edit'
+            ? `/clients/${clientId}/campaigns/${initialData!.id}`
+            : `/clients/${clientId}/campaigns`
+        }
+        className="mb-4 inline-flex items-center gap-1 text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        {mode === 'edit' ? 'Back to campaign' : `Back to ${clientName} campaigns`}
+      </Link>
+
+      <h1 className="mb-6 text-2xl font-bold text-[var(--foreground)]">
+        {mode === 'create' ? 'New Campaign' : `Edit: ${initialData!.campaignName}`}
+      </h1>
+
+      {error && (
+        <div className="mb-4 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit}>
+        {/* Required Fields */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-base">Campaign Details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Campaign Name */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">
+                Campaign Name <span className="text-red-500">*</span>
+              </label>
+              <Input
+                value={campaignName}
+                onChange={(e) => setCampaignName(e.target.value)}
+                maxLength={100}
+                required
+                placeholder="Enter campaign name..."
+              />
+              <p className="mt-1 text-xs text-[var(--muted)]">
+                {campaignName.length}/100 characters
+              </p>
+            </div>
+
+            {/* Campaign Summary */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">
+                Campaign Summary <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={campaignSummary}
+                onChange={(e) => setCampaignSummary(e.target.value)}
+                maxLength={280}
+                required
+                placeholder="Brief campaign summary..."
+                rows={3}
+                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-[var(--muted)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-cyan)]"
+              />
+              <p className="mt-1 text-xs text-[var(--muted)]">
+                {280 - campaignSummary.length} characters remaining
+              </p>
+            </div>
+
+            {/* Service Type */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">
+                Service Type <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={serviceTypeId}
+                onChange={(e) => setServiceTypeId(e.target.value)}
+                required
+                className="w-full h-9 rounded-md border border-gray-300 bg-white px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-cyan)]"
+              >
+                <option value="">Select service type...</option>
+                {activeServiceTypes.map((st) => (
+                  <option key={st.id} value={st.id}>
+                    {st.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Owner */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">
+                Owner <span className="text-red-500">*</span>
+              </label>
+              <Input
+                value={owner}
+                onChange={(e) => setOwner(e.target.value)}
+                required
+                placeholder="Campaign owner name..."
+              />
+            </div>
+
+            {/* Start Date */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">
+                Start Date <span className="text-red-500">*</span>
+              </label>
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                required
+              />
+              {startDate && new Date(startDate) < new Date(new Date().toDateString()) && (
+                <p className="mt-1 text-xs text-amber-600">
+                  ⚠ This date is in the past
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Targeting */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-base">Targeting</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <MultiSelectChips
+              label="Target Geographies"
+              options={managedLists.geographies || []}
+              selected={targetGeographies}
+              onChange={setTargetGeographies}
+            />
+            <MultiSelectChips
+              label="Target Sectors"
+              options={managedLists.sectors || []}
+              selected={targetSectors}
+              onChange={setTargetSectors}
+            />
+            <MultiSelectChips
+              label="Target Titles"
+              options={managedLists.titleBands || []}
+              selected={targetTitles}
+              onChange={setTargetTitles}
+            />
+            <div>
+              <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">
+                Target Company Size
+              </label>
+              <select
+                value={companySize}
+                onChange={(e) => setCompanySize(e.target.value)}
+                className="w-full h-9 rounded-md border border-gray-300 bg-white px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-cyan)]"
+              >
+                <option value="">Select company size...</option>
+                {activeCompanySizes.map((cs) => (
+                  <option key={cs.id} value={cs.id}>
+                    {cs.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Messaging */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-base">Messaging</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">
+                Value Proposition <span className="text-[var(--muted)] font-normal">(optional)</span>
+              </label>
+              <Input
+                value={valueProposition}
+                onChange={(e) => setValueProposition(e.target.value)}
+                maxLength={200}
+                placeholder="Core value proposition..."
+              />
+              <p className="mt-1 text-xs text-[var(--muted)]">
+                {200 - valueProposition.length} characters remaining
+              </p>
+            </div>
+
+            <PainPointsEditor painPoints={painPoints} onChange={setPainPoints} />
+
+            {/* So Whats placeholder */}
+            <div className="rounded-lg border-2 border-dashed border-gray-200 p-4">
+              <p className="text-sm text-[var(--muted)]">
+                <strong>So What selection</strong> — coming in a future slice.
+                Will allow selecting from the client&apos;s So What library.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Submit */}
+        <div className="flex items-center gap-3">
+          <Button type="submit" disabled={saving}>
+            {saving
+              ? mode === 'create'
+                ? 'Creating...'
+                : 'Saving...'
+              : mode === 'create'
+                ? 'Create Campaign'
+                : 'Save Changes'}
+          </Button>
+          <Link
+            href={
+              mode === 'edit'
+                ? `/clients/${clientId}/campaigns/${initialData!.id}`
+                : `/clients/${clientId}/campaigns`
+            }
+          >
+            <Button type="button" variant="outline">
+              Cancel
+            </Button>
+          </Link>
+        </div>
+      </form>
+    </div>
+  );
+}

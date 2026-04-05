@@ -1,6 +1,7 @@
 import { adminDb } from '@/lib/firebase/admin';
 import { getUserContext, hasClientAccess } from '@/lib/auth/server';
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
 import { CampaignTable } from './CampaignTable';
 import type { Campaign } from '@/types';
 
@@ -62,6 +63,13 @@ export default async function CampaignsPage({
       targetGeographies: data.targetGeographies || [],
       targetSectors: data.targetSectors || [],
       targetTitles: data.targetTitles || [],
+      companySize: data.companySize || '',
+      valueProposition: data.valueProposition || '',
+      painPoints: data.painPoints || [],
+      selectedSoWhats: data.selectedSoWhats || [],
+      statusHistory: data.statusHistory || [],
+      pauseReason: data.pauseReason || '',
+      createdBy: data.createdBy || '',
       createdAt: data.createdAt?.toDate?.()?.toISOString() || '',
       updatedAt: data.updatedAt?.toDate?.()?.toISOString() || '',
     };
@@ -83,13 +91,12 @@ export default async function CampaignsPage({
         </div>
 
         {isInternal && (
-          <button
-            disabled
-            className="rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white opacity-50 cursor-not-allowed"
-            title="Coming in a future slice"
+          <Link
+            href={`/clients/${clientId}/campaigns/new`}
+            className="rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 transition-opacity"
           >
             + New Campaign
-          </button>
+          </Link>
         )}
       </div>
 
