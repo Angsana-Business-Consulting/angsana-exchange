@@ -63,6 +63,7 @@ export default async function CampaignEditPage({
     targetSectors: data.targetSectors || [],
     targetTitles: data.targetTitles || [],
     companySize: data.companySize || '',
+    targetTherapyAreas: data.targetTherapyAreas || [],
     valueProposition: data.valueProposition || '',
     painPoints: data.painPoints || [],
     selectedSoWhats: data.selectedSoWhats || [],
@@ -73,7 +74,7 @@ export default async function CampaignEditPage({
     updatedAt: data.updatedAt?.toDate?.()?.toISOString() || '',
   };
 
-  // Fetch client name
+  // Fetch client config
   const clientDoc = await adminDb
     .collection('tenants')
     .doc(tenantId)
@@ -81,9 +82,8 @@ export default async function CampaignEditPage({
     .doc(clientId)
     .get();
 
-  const clientName = clientDoc.exists
-    ? (clientDoc.data()?.name as string) || clientId
-    : clientId;
+  const clientData = clientDoc.exists ? clientDoc.data()! : {};
+  const clientName = (clientData.name as string) || clientId;
 
   // Fetch managed lists
   const listNames = ['serviceTypes', 'geographies', 'sectors', 'titleBands', 'companySizes'];
@@ -105,6 +105,38 @@ export default async function CampaignEditPage({
       : [];
   });
 
+  // Build therapy area config from client capabilities
+  const capabilities: string[] = clientData.capabilities || [];
+  const hasTherapyAreas = capabilities.includes('therapyAreas');
+  let therapyAreaConfig: { enabled: boolean; activeAreas: ManagedListItem[]; conflictedAreas: string[] } | undefined;
+
+  if (hasTherapyAreas) {
+    const therapyAreasDoc = await adminDb
+      .collection('tenants')
+      .doc(tenantId)
+      .collection('managedLists')
+      .doc('therapyAreas')
+      .get();
+    const allTherapyAreas: ManagedListItem[] = therapyAreasDoc.exists
+      ? (therapyAreasDoc.data()!.items as ManagedListItem[]) || []
+      : [];
+
+    const clientActiveIds: string[] = clientData.therapyAreas || [];
+    const activeAreas = allTherapyAreas.filter((ta) => clientActiveIds.includes(ta.id));
+
+    const conflictedIds: string[] = clientData.conflictedTherapyAreas || [];
+    const conflictedLabels = conflictedIds.map((id) => {
+      const item = allTherapyAreas.find((ta) => ta.id === id);
+      return item ? item.label : id;
+    });
+
+    therapyAreaConfig = {
+      enabled: true,
+      activeAreas,
+      conflictedAreas: conflictedLabels,
+    };
+  }
+
   return (
     <CampaignForm
       mode="edit"
@@ -112,6 +144,7 @@ export default async function CampaignEditPage({
       clientName={clientName}
       managedLists={managedLists}
       initialData={campaign}
+      therapyAreaConfig={therapyAreaConfig}
     />
   );
 }

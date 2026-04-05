@@ -36,9 +36,8 @@ export default async function CampaignNewPage({
     .doc(clientId)
     .get();
 
-  const clientName = clientDoc.exists
-    ? (clientDoc.data()?.name as string) || clientId
-    : clientId;
+  const clientData = clientDoc.exists ? clientDoc.data()! : {};
+  const clientName = (clientData.name as string) || clientId;
 
   // Fetch managed lists
   const listNames = ['serviceTypes', 'geographies', 'sectors', 'titleBands', 'companySizes'];
@@ -60,12 +59,49 @@ export default async function CampaignNewPage({
       : [];
   });
 
+  // Build therapy area config from client capabilities
+  const capabilities: string[] = clientData.capabilities || [];
+  const hasTherapyAreas = capabilities.includes('therapyAreas');
+  let therapyAreaConfig: { enabled: boolean; activeAreas: ManagedListItem[]; conflictedAreas: string[] } | undefined;
+
+  if (hasTherapyAreas) {
+    // Fetch the therapy areas managed list for labels
+    const therapyAreasDoc = await adminDb
+      .collection('tenants')
+      .doc(tenantId)
+      .collection('managedLists')
+      .doc('therapyAreas')
+      .get();
+    const allTherapyAreas: ManagedListItem[] = therapyAreasDoc.exists
+      ? (therapyAreasDoc.data()!.items as ManagedListItem[]) || []
+      : [];
+
+    // Client's active therapy area IDs
+    const clientActiveIds: string[] = clientData.therapyAreas || [];
+    // Filter the managed list to only the client's active areas
+    const activeAreas = allTherapyAreas.filter((ta) => clientActiveIds.includes(ta.id));
+
+    // Get conflicted area labels
+    const conflictedIds: string[] = clientData.conflictedTherapyAreas || [];
+    const conflictedLabels = conflictedIds.map((id) => {
+      const item = allTherapyAreas.find((ta) => ta.id === id);
+      return item ? item.label : id;
+    });
+
+    therapyAreaConfig = {
+      enabled: true,
+      activeAreas,
+      conflictedAreas: conflictedLabels,
+    };
+  }
+
   return (
     <CampaignForm
       mode="create"
       clientId={clientId}
       clientName={clientName}
       managedLists={managedLists}
+      therapyAreaConfig={therapyAreaConfig}
     />
   );
 }

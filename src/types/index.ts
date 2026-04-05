@@ -175,6 +175,8 @@ export interface Campaign {
   targetTitles: string[];
   /** Target company size ID (from managedLists/companySizes) */
   companySize: string;
+  /** Target therapy area IDs (from client config, when therapyAreas capability enabled) */
+  targetTherapyAreas?: string[];
 
   // --- Messaging ---
   /** Value proposition text (max 200 chars) */

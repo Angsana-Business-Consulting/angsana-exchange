@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { Campaign, ManagedListItem } from '@/types';
+import { AlertTriangle } from 'lucide-react';
 
 // =============================================================================
 // Multi-select chips component
@@ -196,12 +197,19 @@ function PainPointsEditor({
 // Main Form Component
 // =============================================================================
 
+interface TherapyAreaConfig {
+  enabled: boolean;
+  activeAreas: ManagedListItem[];
+  conflictedAreas: string[];
+}
+
 interface CampaignFormProps {
   mode: 'create' | 'edit';
   clientId: string;
   clientName: string;
   managedLists: Record<string, ManagedListItem[]>;
   initialData?: Campaign;
+  therapyAreaConfig?: TherapyAreaConfig;
 }
 
 export function CampaignForm({
@@ -210,6 +218,7 @@ export function CampaignForm({
   clientName,
   managedLists,
   initialData,
+  therapyAreaConfig,
 }: CampaignFormProps) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -235,6 +244,9 @@ export function CampaignForm({
     initialData?.targetTitles || []
   );
   const [companySize, setCompanySize] = useState(initialData?.companySize || '');
+  const [targetTherapyAreas, setTargetTherapyAreas] = useState<string[]>(
+    initialData?.targetTherapyAreas || []
+  );
   const [valueProposition, setValueProposition] = useState(
     initialData?.valueProposition || ''
   );
@@ -267,6 +279,7 @@ export function CampaignForm({
         targetSectors,
         targetTitles,
         companySize,
+        ...(therapyAreaConfig?.enabled ? { targetTherapyAreas } : {}),
         valueProposition,
         painPoints: painPoints.filter((p) => p.trim() !== ''),
       };
@@ -475,6 +488,29 @@ export function CampaignForm({
                 ))}
               </select>
             </div>
+
+            {/* Therapy Areas — only when client has therapyAreas capability */}
+            {therapyAreaConfig?.enabled && (
+              <div>
+                <MultiSelectChips
+                  label="Target Therapy Areas"
+                  options={therapyAreaConfig.activeAreas}
+                  selected={targetTherapyAreas}
+                  onChange={setTargetTherapyAreas}
+                />
+                {therapyAreaConfig.conflictedAreas.length > 0 && (
+                  <div className="mt-2 flex items-start gap-2 rounded-md bg-red-50 px-3 py-2">
+                    <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-xs font-medium text-red-700">Conflicted therapy areas</p>
+                      <p className="text-xs text-red-600">
+                        {therapyAreaConfig.conflictedAreas.join(', ')} — avoid targeting these areas for this client.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 
