@@ -1,24 +1,37 @@
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
+import { AuthProvider } from '@/lib/auth/AuthContext';
+import { getUserContext } from '@/lib/auth/server';
 
 /**
  * Dashboard layout — authenticated shell with sidebar and header.
- * All routes under (dashboard) share this layout.
+ *
+ * This is a server component that:
+ * 1. Reads the user's claims from request headers (set by middleware)
+ * 2. Wraps children in AuthProvider so client components can access user context
+ * 3. Renders the sidebar + header shell
+ *
+ * All routes under (dashboard) share this layout — including:
+ * /my-clients, /portfolio, /clients/[clientId]/*, /admin/*
  */
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const user = await getUserContext();
+
   return (
-    <div className="flex h-screen">
-      <Sidebar />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <Header />
-        <main className="flex-1 overflow-y-auto bg-gray-50 p-6">
-          {children}
-        </main>
+    <AuthProvider user={user}>
+      <div className="flex h-screen">
+        <Sidebar />
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <Header />
+          <main className="flex-1 overflow-y-auto bg-gray-50 p-6">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </AuthProvider>
   );
 }

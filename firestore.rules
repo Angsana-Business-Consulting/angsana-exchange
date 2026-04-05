@@ -1,0 +1,88 @@
+rules_version = '2';
+
+/**
+ * Angsana Exchange — Firestore Security Rules
+ *
+ * Defence in depth: the Next.js middleware validates the JWT and enforces
+ * role-based access at the application layer. These rules provide a second
+ * layer at the database level.
+ *
+ * All reads are scoped to the authenticated user's tenantId claim.
+ * Write access is restricted in Slice 1 — data is seeded via Admin SDK.
+ */
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: check the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper: check tenantId claim matches the requested tenant document
+    function isTenantMember(tenantId) {
+      return isAuthenticated()
+        && request.auth.token.tenantId == tenantId;
+    }
+
+    // Helper: check if the user is an internal role
+    function isInternal() {
+      return isAuthenticated()
+        && (request.auth.token.role == 'internal-admin'
+            || request.auth.token.role == 'internal-user');
+    }
+
+    // Helper: check if user has access to a specific client
+    function hasClientAccess(clientId) {
+      return isAuthenticated()
+        && (
+          // Client user: clientId claim matches
+          request.auth.token.clientId == clientId
+          // Internal admin with wildcard
+          || (request.auth.token.role == 'internal-admin'
+              && '*' in request.auth.token.assignedClients)
+          // Internal user with explicit assignment
+          || (request.auth.token.role == 'internal-user'
+              && clientId in request.auth.token.assignedClients)
+        );
+    }
+
+    // ─── Tenant documents ───────────────────────────────────────────
+    match /tenants/{tenantId} {
+      // Tenant config: readable by tenant members
+      allow read: if isTenantMember(tenantId);
+      allow write: if false; // Admin SDK only
+
+      // ─── Managed Lists ──────────────────────────────────────────
+      match /managedLists/{listId} {
+        allow read: if isTenantMember(tenantId);
+        allow write: if false; // Admin SDK only (admin UI in later slice)
+      }
+
+      // ─── Clients ────────────────────────────────────────────────
+      match /clients/{clientId} {
+        allow read: if isTenantMember(tenantId)
+                    && hasClientAccess(clientId);
+        allow write: if false; // Admin SDK only
+
+        // ─── Campaigns ──────────────────────────────────────────
+        match /campaigns/{campaignId} {
+          allow read: if isTenantMember(tenantId)
+                      && hasClientAccess(clientId);
+          allow write: if false; // Admin SDK only (campaign CRUD in later slice)
+        }
+
+        // ─── Future subcollections (checkins, actions, etc.) ────
+        match /{subcollection}/{docId} {
+          allow read: if isTenantMember(tenantId)
+                      && hasClientAccess(clientId);
+          allow write: if false;
+        }
+      }
+    }
+
+    // ─── Deny everything else by default ────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

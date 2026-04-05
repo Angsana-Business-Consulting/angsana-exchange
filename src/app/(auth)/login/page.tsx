@@ -7,6 +7,28 @@ import { auth } from '@/lib/firebase/client';
 import { defaultTheme } from '@/config/theme';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import type { UserRole } from '@/types';
+
+/**
+ * Determine where to redirect after login based on role.
+ *
+ * - internal-admin → /portfolio (cross-client landing)
+ * - internal-user  → /my-clients (assigned clients landing)
+ * - client-approver / client-viewer → /clients/{clientId}/campaigns
+ */
+function getRedirectPath(role: UserRole, clientId: string | null): string {
+  switch (role) {
+    case 'internal-admin':
+      return '/portfolio';
+    case 'internal-user':
+      return '/my-clients';
+    case 'client-approver':
+    case 'client-viewer':
+      return clientId ? `/clients/${clientId}/campaigns` : '/login';
+    default:
+      return '/login';
+  }
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -21,9 +43,33 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      router.push('/dashboard');
+      // 1. Authenticate with Firebase
+      const credential = await signInWithEmailAndPassword(auth, email, password);
+
+      // 2. Get the ID token (includes custom claims)
+      const idToken = await credential.user.getIdToken(true);
+
+      // 3. Send token to server to create session cookie
+      const response = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create session');
+      }
+
+      // 4. Parse the token to get claims for redirect
+      const tokenResult = await credential.user.getIdTokenResult();
+      const role = (tokenResult.claims.role as UserRole) || 'client-viewer';
+      const clientId = (tokenResult.claims.clientId as string) || null;
+
+      // 5. Redirect based on role
+      const redirectPath = getRedirectPath(role, clientId);
+      router.push(redirectPath);
     } catch (err) {
+      console.error('Login error:', err);
       setError('Invalid email or password');
     } finally {
       setLoading(false);
