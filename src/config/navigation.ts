@@ -44,7 +44,6 @@ export const clientNavItems: NavItem[] = [
     route: '/clients/{clientId}/sowhats',
     icon: 'Lightbulb',
     module: 'sowhats',
-    roles: ['internal-admin', 'internal-user'],
   },
   {
     label: 'Wishlists',

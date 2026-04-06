@@ -2,7 +2,7 @@ import { adminDb } from '@/lib/firebase/admin';
 import { getUserContext, hasClientAccess } from '@/lib/auth/server';
 import { redirect } from 'next/navigation';
 import { CampaignDetailClient } from './CampaignDetailClient';
-import type { Campaign, ManagedListItem } from '@/types';
+import type { Campaign, ManagedListItem, SoWhat } from '@/types';
 
 /**
  * Campaign Detail Page — /clients/[clientId]/campaigns/[campaignId]
@@ -174,6 +174,38 @@ export default async function CampaignDetailPage({
     };
   });
 
+  // Fetch So Whats data for this campaign's selectedSoWhats
+  let soWhatsData: SoWhat[] = [];
+  if (campaign.selectedSoWhats.length > 0) {
+    const soWhatsSnap = await adminDb
+      .collection('tenants')
+      .doc(tenantId)
+      .collection('clients')
+      .doc(clientId)
+      .collection('soWhats')
+      .get();
+
+    soWhatsData = soWhatsSnap.docs
+      .filter((doc) => campaign.selectedSoWhats.includes(doc.id))
+      .map((doc) => {
+        const d = doc.data();
+        return {
+          id: doc.id,
+          headline: d.headline || '',
+          emailVersion: d.emailVersion || '',
+          supportingEvidence: d.supportingEvidence || '',
+          audienceTags: d.audienceTags || [],
+          orientationTags: d.orientationTags || [],
+          sourceRef: d.sourceRef || '',
+          status: d.status || 'draft',
+          createdBy: d.createdBy || '',
+          createdDate: d.createdDate?.toDate?.()?.toISOString() || '',
+          updatedBy: d.updatedBy || '',
+          updatedDate: d.updatedDate?.toDate?.()?.toISOString() || '',
+        };
+      });
+  }
+
   return (
     <CampaignDetailClient
       campaign={campaign}
@@ -184,6 +216,7 @@ export default async function CampaignDetailPage({
       userEmail={user.email}
       relatedCheckins={relatedCheckins}
       relatedActions={relatedActions}
+      soWhatsData={soWhatsData}
     />
   );
 }

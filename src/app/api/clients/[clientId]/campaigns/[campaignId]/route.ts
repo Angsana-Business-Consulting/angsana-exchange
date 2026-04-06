@@ -1,4 +1,3 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { FieldValue } from 'firebase-admin/firestore';
 
@@ -86,7 +85,7 @@ export async function PUT(
   const allowedFields = [
     'campaignName', 'campaignSummary', 'serviceType', 'serviceTypeId',
     'owner', 'startDate', 'targetGeographies', 'targetSectors',
-    'targetTitles', 'companySize', 'valueProposition', 'painPoints',
+    'targetTitles', 'companySize', 'valueProposition', 'painPoints', 'selectedSoWhats',
   ];
 
   const updateData: Record<string, unknown> = {};

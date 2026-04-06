@@ -500,6 +500,75 @@ export const WISHLIST_PRIORITY_CONFIG: Record<
 };
 
 // =============================================================================
+// So What
+// =============================================================================
+
+/**
+ * So What status values.
+ */
+export type SoWhatStatus = 'draft' | 'approved' | 'retired';
+
+/**
+ * So What orientation tag values.
+ */
+export type SoWhatOrientation = 'internal-facing' | 'external-facing' | 'both';
+
+/**
+ * So What document from Firestore.
+ * Stored at tenants/{tenantId}/clients/{clientId}/soWhats/{soWhatId}
+ */
+export interface SoWhat {
+  /** Document ID */
+  id: string;
+  /** The sayable version. What a caller says on the phone. Max 80 chars. */
+  headline: string;
+  /** The copy/paste version for outbound emails. Max 200 chars. */
+  emailVersion: string;
+  /** The proof point — a stat, case study result, named outcome. Max 300 chars. */
+  supportingEvidence: string;
+  /** Which personas this resonates with. Multi-select from tenant titleBands. */
+  audienceTags: string[];
+  /** Internal-facing / external-facing / both. Controls AI selection. */
+  orientationTags: SoWhatOrientation[];
+  /** Provenance — white paper, case study, or briefing. Max 200 chars. Optional. */
+  sourceRef: string;
+  /** Current status: draft / approved / retired. */
+  status: SoWhatStatus;
+  /** UID of creator. Auto-populated. */
+  createdBy: string;
+  /** Created timestamp (ISO string). */
+  createdDate: string;
+  /** UID of last editor. Auto-populated. */
+  updatedBy: string;
+  /** Last updated timestamp (ISO string). */
+  updatedDate: string;
+}
+
+/**
+ * So What status display configuration.
+ */
+export const SOWHAT_STATUS_CONFIG: Record<
+  SoWhatStatus,
+  { label: string; colour: string; bgColour: string }
+> = {
+  draft: { label: 'Draft', colour: '#D97706', bgColour: '#FFFBEB' },
+  approved: { label: 'Approved', colour: '#059669', bgColour: '#ECFDF5' },
+  retired: { label: 'Retired', colour: '#6B7280', bgColour: '#F3F4F6' },
+};
+
+/**
+ * So What orientation display configuration.
+ */
+export const SOWHAT_ORIENTATION_CONFIG: Record<
+  SoWhatOrientation,
+  { label: string; colour: string; bgColour: string }
+> = {
+  'internal-facing': { label: 'Internal', colour: '#7C3AED', bgColour: '#EDE9FE' },
+  'external-facing': { label: 'External', colour: '#2563EB', bgColour: '#EFF6FF' },
+  both: { label: 'Both', colour: '#D97706', bgColour: '#FFFBEB' },
+};
+
+// =============================================================================
 // Managed Lists
 // =============================================================================
 

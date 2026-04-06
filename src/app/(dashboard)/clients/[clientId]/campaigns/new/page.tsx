@@ -2,7 +2,7 @@ import { adminDb } from '@/lib/firebase/admin';
 import { getUserContext, hasClientAccess, isInternalRole } from '@/lib/auth/server';
 import { redirect } from 'next/navigation';
 import { CampaignForm } from '../CampaignForm';
-import type { ManagedListItem } from '@/types';
+import type { ManagedListItem, SoWhat } from '@/types';
 
 /**
  * Campaign Create Page — /clients/[clientId]/campaigns/new
@@ -95,6 +95,34 @@ export default async function CampaignNewPage({
     };
   }
 
+  // Fetch approved So Whats for the picker
+  const soWhatsSnap = await adminDb
+    .collection('tenants')
+    .doc(tenantId)
+    .collection('clients')
+    .doc(clientId)
+    .collection('soWhats')
+    .where('status', '==', 'approved')
+    .get();
+
+  const availableSoWhats: SoWhat[] = soWhatsSnap.docs.map((doc) => {
+    const d = doc.data();
+    return {
+      id: doc.id,
+      headline: d.headline || '',
+      emailVersion: d.emailVersion || '',
+      supportingEvidence: d.supportingEvidence || '',
+      audienceTags: d.audienceTags || [],
+      orientationTags: d.orientationTags || [],
+      sourceRef: d.sourceRef || '',
+      status: d.status || 'approved',
+      createdBy: d.createdBy || '',
+      createdDate: d.createdDate?.toDate?.()?.toISOString() || '',
+      updatedBy: d.updatedBy || '',
+      updatedDate: d.updatedDate?.toDate?.()?.toISOString() || '',
+    };
+  });
+
   return (
     <CampaignForm
       mode="create"
@@ -102,6 +130,7 @@ export default async function CampaignNewPage({
       clientName={clientName}
       managedLists={managedLists}
       therapyAreaConfig={therapyAreaConfig}
+      availableSoWhats={availableSoWhats}
     />
   );
 }

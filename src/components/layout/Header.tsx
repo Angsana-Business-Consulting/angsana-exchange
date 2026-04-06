@@ -10,12 +10,20 @@ import { useAuth } from '@/lib/auth/AuthContext';
 /**
  * Derive page title from pathname.
  */
+// Friendly labels for URL segments that don't capitalise cleanly
+const SEGMENT_LABELS: Record<string, string> = {
+  sowhats: 'So Whats',
+  checkins: 'Check-ins',
+  dnc: 'DNC / MSA-PSL',
+};
+
 function getPageTitle(pathname: string): string {
   const segments = pathname.split('/').filter(Boolean);
 
   // Handle /clients/{clientId}/{moduleName} pattern
   if (segments[0] === 'clients' && segments.length >= 3) {
     const pageName = segments[2];
+    if (SEGMENT_LABELS[pageName]) return SEGMENT_LABELS[pageName];
     return pageName.charAt(0).toUpperCase() + pageName.slice(1);
   }
 

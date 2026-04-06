@@ -107,7 +107,7 @@ const TEST_USERS: TestUser[] = [
       clientId: 'cegid-spain',
       assignedClients: null,
       permittedModules: [
-        'campaigns', 'checkins', 'actions', 'wishlists', 'documents', 'dashboard', 'approvals',
+        'campaigns', 'checkins', 'actions', 'sowhats', 'wishlists', 'documents', 'dashboard', 'approvals',
       ],
     },
   },
@@ -121,7 +121,7 @@ const TEST_USERS: TestUser[] = [
       clientId: 'cegid-spain',
       assignedClients: null,
       permittedModules: [
-        'campaigns', 'checkins', 'actions', 'wishlists', 'documents', 'dashboard',
+        'campaigns', 'checkins', 'actions', 'sowhats', 'wishlists', 'documents', 'dashboard',
       ],
     },
   },
@@ -668,6 +668,105 @@ async function seedFirestore() {
     await wishlistsRef.doc(wishlist.id).set(wishlist.data);
     console.log(`    ✓ Wishlist: ${wishlist.data.companyName} (${wishlist.data.status})`);
   }
+
+  // --- So Whats for Cegid Spain ---
+  console.log('  Seeding So Whats for cegid-spain...');
+  const soWhatsRef = cegidRef.collection('soWhats');
+
+  const soWhats = [
+    {
+      id: 'sowhat-1',
+      data: {
+        headline: 'Cegid cut payroll processing time by 40% for mid-market retailers',
+        emailVersion: 'Cegid\'s payroll platform reduced processing time by 40% for mid-market retail businesses, freeing finance teams to focus on strategic work.',
+        supportingEvidence: 'Carrefour case study, 2024. 40% reduction measured across 12-month rollout.',
+        audienceTags: ['cfo-finance-director', 'vp-director-hr'],
+        orientationTags: ['external-facing'],
+        sourceRef: 'Carrefour case study, 2024',
+        status: 'approved',
+        createdBy: 'mike@angsana.com',
+        createdDate: Timestamp.fromDate(new Date('2026-03-01')),
+        updatedBy: 'keith@angsana.com',
+        updatedDate: Timestamp.fromDate(new Date('2026-03-05')),
+      },
+    },
+    {
+      id: 'sowhat-2',
+      data: {
+        headline: 'One platform for payroll, HR and talent across 20+ countries',
+        emailVersion: 'Manage payroll, HR administration, and talent development across 20+ countries from a single cloud platform — no integration headaches.',
+        supportingEvidence: 'Cegid operates in 23 countries. Platform consolidation data from 2024 annual report.',
+        audienceTags: ['cfo-finance-director', 'cto-cio-cdo'],
+        orientationTags: ['external-facing'],
+        sourceRef: 'Cegid 2024 Annual Report',
+        status: 'approved',
+        createdBy: 'mike@angsana.com',
+        createdDate: Timestamp.fromDate(new Date('2026-03-01')),
+        updatedBy: 'keith@angsana.com',
+        updatedDate: Timestamp.fromDate(new Date('2026-03-05')),
+      },
+    },
+    {
+      id: 'sowhat-3',
+      data: {
+        headline: 'Your compliance risk is someone else\'s automation',
+        emailVersion: 'Multi-country payroll compliance changes automatically — no manual tracking, no missed deadlines, no fines.',
+        supportingEvidence: '98.7% compliance rate across client base. Zero regulatory penalties reported in 2024.',
+        audienceTags: ['cfo-finance-director'],
+        orientationTags: ['external-facing'],
+        sourceRef: 'Cegid compliance report, 2024',
+        status: 'approved',
+        createdBy: 'keith@angsana.com',
+        createdDate: Timestamp.fromDate(new Date('2026-03-02')),
+        updatedBy: 'keith@angsana.com',
+        updatedDate: Timestamp.fromDate(new Date('2026-03-06')),
+      },
+    },
+    {
+      id: 'sowhat-4',
+      data: {
+        headline: 'Mid-market gets enterprise-grade HR tech without enterprise complexity',
+        emailVersion: 'Enterprise-grade talent management and workforce analytics, sized and priced for mid-market organisations.',
+        supportingEvidence: 'Needs specific pricing/sizing data from Cegid.',
+        audienceTags: ['vp-director-hr', 'cto-cio-cdo'],
+        orientationTags: ['external-facing', 'internal-facing'],
+        sourceRef: '',
+        status: 'draft',
+        createdBy: 'alessandro@cegid.com',
+        createdDate: Timestamp.fromDate(new Date('2026-03-10')),
+        updatedBy: 'alessandro@cegid.com',
+        updatedDate: Timestamp.fromDate(new Date('2026-03-10')),
+      },
+    },
+    {
+      id: 'sowhat-5',
+      data: {
+        headline: 'Retail workforce scheduling that actually reflects footfall patterns',
+        emailVersion: 'AI-driven workforce scheduling that aligns staffing levels with real-time footfall data, reducing overstaffing costs by up to 25%.',
+        supportingEvidence: 'Pilot data from 3 retail clients, Q4 2024. Needs final validation.',
+        audienceTags: ['vp-director-operations'],
+        orientationTags: ['external-facing'],
+        sourceRef: 'Pilot data Q4 2024',
+        status: 'draft',
+        createdBy: 'mike@angsana.com',
+        createdDate: Timestamp.fromDate(new Date('2026-03-12')),
+        updatedBy: 'mike@angsana.com',
+        updatedDate: Timestamp.fromDate(new Date('2026-03-12')),
+      },
+    },
+  ];
+
+  for (const soWhat of soWhats) {
+    await soWhatsRef.doc(soWhat.id).set(soWhat.data);
+    console.log(`    ✓ So What: ${soWhat.data.headline.substring(0, 50)}... (${soWhat.data.status})`);
+  }
+
+  // Assign 3 approved So Whats to the first campaign (iberia-retail-pos-fashion)
+  console.log('  Updating campaign selectedSoWhats...');
+  await campaignsRef.doc('iberia-retail-pos-fashion').update({
+    selectedSoWhats: ['sowhat-1', 'sowhat-2', 'sowhat-3'],
+  });
+  console.log('    ✓ Assigned 3 approved So Whats to Iberia Retail POS — Fashion & Luxury');
 
   // --- Client: Wavix (stub — no campaigns) ---
   console.log('  Seeding client: wavix (stub)...');

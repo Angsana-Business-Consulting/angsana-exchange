@@ -89,7 +89,7 @@ export async function POST(
     // Messaging (optional)
     valueProposition: body.valueProposition || '',
     painPoints: body.painPoints || [],
-    selectedSoWhats: [],
+    selectedSoWhats: body.selectedSoWhats || [],
     // Lifecycle
     statusHistory: [
       { from: null, to: 'draft', timestamp: now, changedBy: user.email },

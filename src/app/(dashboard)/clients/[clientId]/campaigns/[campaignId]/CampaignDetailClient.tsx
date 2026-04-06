@@ -15,8 +15,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CAMPAIGN_STATUS_CONFIG, CHECKIN_TYPE_CONFIG, ACTION_STATUS_CONFIG } from '@/types';
-import type { Campaign, ManagedListItem, StatusHistoryEntry, CheckInType, ActionStatus } from '@/types';
+import { CAMPAIGN_STATUS_CONFIG, CHECKIN_TYPE_CONFIG, ACTION_STATUS_CONFIG, SOWHAT_STATUS_CONFIG, SOWHAT_ORIENTATION_CONFIG } from '@/types';
+import type { Campaign, ManagedListItem, StatusHistoryEntry, CheckInType, ActionStatus, SoWhat } from '@/types';
 
 // =============================================================================
 // Helpers
@@ -360,6 +360,7 @@ export function CampaignDetailClient({
   userEmail,
   relatedCheckins = [],
   relatedActions = [],
+  soWhatsData = [],
 }: {
   campaign: Campaign;
   clientId: string;
@@ -369,6 +370,7 @@ export function CampaignDetailClient({
   userEmail: string;
   relatedCheckins?: { id: string; date: string; type: string; keyPoints: string[] }[];
   relatedActions?: { id: string; title: string; status: string; assignedTo: string; dueDate: string }[];
+  soWhatsData?: SoWhat[];
 }) {
   const [campaign, setCampaign] = useState(initialCampaign);
   const [toastMessage, setToastMessage] = useState('');
@@ -629,14 +631,61 @@ export function CampaignDetailClient({
               Selected So Whats
             </p>
             {campaign.selectedSoWhats.length > 0 ? (
-              <div className="flex flex-wrap gap-1.5">
-                {campaign.selectedSoWhats.map((id) => (
-                  <TagChip key={id} label={id} />
-                ))}
+              <div className="space-y-3">
+                {campaign.selectedSoWhats.map((swId) => {
+                  const sw = soWhatsData.find((s) => s.id === swId);
+                  if (!sw) return null;
+                  const isRetired = sw.status === 'retired';
+                  const statusCfg = SOWHAT_STATUS_CONFIG[sw.status];
+                  return (
+                    <Link
+                      key={swId}
+                      href={`/clients/${clientId}/sowhats/${swId}`}
+                      className={`block rounded-lg border p-4 transition-colors hover:border-gray-300 ${
+                        isRetired ? 'border-gray-200 bg-gray-50 opacity-75' : 'border-gray-200 bg-white'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-semibold text-gray-900 truncate">{sw.headline}</p>
+                            {isRetired && (
+                              <span
+                                className="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
+                                style={{ color: statusCfg.colour, backgroundColor: statusCfg.bgColour }}
+                              >
+                                {statusCfg.label}
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-1 text-xs text-gray-600 line-clamp-2">{sw.emailVersion}</p>
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {sw.audienceTags.map((tag) => (
+                              <span key={tag} className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">
+                                {lookupLabel(managedLists.titleBands || [], tag)}
+                              </span>
+                            ))}
+                            {sw.orientationTags.map((tag) => {
+                              const cfg = SOWHAT_ORIENTATION_CONFIG[tag];
+                              return (
+                                <span key={tag} className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ color: cfg.colour, backgroundColor: cfg.bgColour }}>
+                                  {cfg.label}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
               </div>
             ) : (
               <p className="text-sm italic text-[var(--muted)]">
-                No So Whats selected — add from client library
+                No So Whats selected —{' '}
+                <Link href={`/clients/${clientId}/sowhats`} className="text-[var(--primary)] hover:underline">
+                  add from client library
+                </Link>
               </p>
             )}
           </div>

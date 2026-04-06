@@ -7,7 +7,8 @@ import { ArrowLeft, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import type { Campaign, ManagedListItem } from '@/types';
+import type { Campaign, ManagedListItem, SoWhat } from '@/types';
+import { SOWHAT_ORIENTATION_CONFIG } from '@/types';
 import { AlertTriangle } from 'lucide-react';
 
 // =============================================================================
@@ -210,6 +211,7 @@ interface CampaignFormProps {
   managedLists: Record<string, ManagedListItem[]>;
   initialData?: Campaign;
   therapyAreaConfig?: TherapyAreaConfig;
+  availableSoWhats?: SoWhat[];
 }
 
 export function CampaignForm({
@@ -219,6 +221,7 @@ export function CampaignForm({
   managedLists,
   initialData,
   therapyAreaConfig,
+  availableSoWhats = [],
 }: CampaignFormProps) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -253,6 +256,10 @@ export function CampaignForm({
   const [painPoints, setPainPoints] = useState<string[]>(
     initialData?.painPoints || []
   );
+  const [selectedSoWhats, setSelectedSoWhats] = useState<string[]>(
+    initialData?.selectedSoWhats || []
+  );
+  const [soWhatSearch, setSoWhatSearch] = useState('');
 
   // Get service type label from id
   function getServiceTypeLabel(id: string): string {
@@ -282,6 +289,7 @@ export function CampaignForm({
         ...(therapyAreaConfig?.enabled ? { targetTherapyAreas } : {}),
         valueProposition,
         painPoints: painPoints.filter((p) => p.trim() !== ''),
+        selectedSoWhats,
       };
 
       if (mode === 'create') {
@@ -537,12 +545,129 @@ export function CampaignForm({
 
             <PainPointsEditor painPoints={painPoints} onChange={setPainPoints} />
 
-            {/* So Whats placeholder */}
-            <div className="rounded-lg border-2 border-dashed border-gray-200 p-4">
-              <p className="text-sm text-[var(--muted)]">
-                <strong>So What selection</strong> — coming in a future slice.
-                Will allow selecting from the client&apos;s So What library.
-              </p>
+            {/* So What Picker */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">
+                So Whats <span className="text-[var(--muted)] font-normal">(select from approved library)</span>
+              </label>
+
+              {/* Selected So Whats */}
+              {selectedSoWhats.length > 0 && (
+                <div className="space-y-2 mb-3">
+                  {selectedSoWhats.map((swId) => {
+                    const sw = availableSoWhats.find((s) => s.id === swId);
+                    if (!sw) return null;
+                    return (
+                      <div
+                        key={swId}
+                        className="flex items-start justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 p-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{sw.headline}</p>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {sw.audienceTags.map((tag) => {
+                              const label = (managedLists.titleBands || []).find((t) => t.id === tag)?.label || tag;
+                              return (
+                                <span key={tag} className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">
+                                  {label}
+                                </span>
+                              );
+                            })}
+                            {sw.orientationTags.map((tag) => {
+                              const cfg = SOWHAT_ORIENTATION_CONFIG[tag];
+                              return (
+                                <span key={tag} className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ color: cfg.colour, backgroundColor: cfg.bgColour }}>
+                                  {cfg.label}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSoWhats((prev) => prev.filter((id) => id !== swId))}
+                          className="shrink-0 text-gray-400 hover:text-red-600"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Picker */}
+              {(() => {
+                const unselected = availableSoWhats.filter((sw) => !selectedSoWhats.includes(sw.id));
+                const filtered = soWhatSearch
+                  ? unselected.filter((sw) => sw.headline.toLowerCase().includes(soWhatSearch.toLowerCase()))
+                  : unselected;
+
+                if (availableSoWhats.length === 0) {
+                  return (
+                    <div className="rounded-lg border-2 border-dashed border-gray-200 p-4">
+                      <p className="text-sm text-[var(--muted)]">
+                        No approved So Whats yet.{' '}
+                        <Link href={`/clients/${clientId}/sowhats`} className="text-[var(--primary)] hover:underline">
+                          Create and approve So Whats
+                        </Link>{' '}
+                        in the So What library to select them for campaigns.
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div>
+                    <Input
+                      type="text"
+                      value={soWhatSearch}
+                      onChange={(e) => setSoWhatSearch(e.target.value)}
+                      placeholder="Search So Whats by headline..."
+                      className="mb-2 h-8 text-sm"
+                    />
+                    {filtered.length > 0 ? (
+                      <div className="max-h-48 overflow-y-auto rounded-md border border-gray-200 bg-white">
+                        {filtered.map((sw) => (
+                          <button
+                            key={sw.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedSoWhats((prev) => [...prev, sw.id]);
+                              setSoWhatSearch('');
+                            }}
+                            className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-0"
+                          >
+                            <p className="text-sm font-medium text-gray-900 truncate">{sw.headline}</p>
+                            <div className="mt-0.5 flex flex-wrap gap-1">
+                              {sw.audienceTags.map((tag) => {
+                                const label = (managedLists.titleBands || []).find((t) => t.id === tag)?.label || tag;
+                                return (
+                                  <span key={tag} className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">
+                                    {label}
+                                  </span>
+                                );
+                              })}
+                              {sw.orientationTags.map((tag) => {
+                                const cfg = SOWHAT_ORIENTATION_CONFIG[tag];
+                                return (
+                                  <span key={tag} className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ color: cfg.colour, backgroundColor: cfg.bgColour }}>
+                                    {cfg.label}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-[var(--muted)] py-2">
+                        {soWhatSearch ? 'No matching So Whats found.' : 'All approved So Whats have been selected.'}
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </CardContent>
         </Card>
