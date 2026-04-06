@@ -78,9 +78,17 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function relativeDate(dateStr: string | null): string {
-  if (!dateStr) return 'Never';
-  const date = new Date(dateStr);
+function relativeDate(dateVal: unknown): string {
+  if (!dateVal) return 'Never';
+  // Handle Firestore Timestamp objects ({ _seconds, _nanoseconds } or { seconds, nanoseconds })
+  let date: Date;
+  if (typeof dateVal === 'object' && dateVal !== null && ('_seconds' in dateVal || 'seconds' in dateVal)) {
+    const seconds = (dateVal as Record<string, number>)._seconds ?? (dateVal as Record<string, number>).seconds;
+    date = new Date(seconds * 1000);
+  } else {
+    date = new Date(dateVal as string);
+  }
+  if (isNaN(date.getTime())) return 'Never';
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
