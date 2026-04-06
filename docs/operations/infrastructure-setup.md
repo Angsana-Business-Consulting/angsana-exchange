@@ -145,10 +145,7 @@ gcloud run deploy angsana-exchange \
   --max-instances=5 \
   --timeout=60 \
   --concurrency=80 \
-  --startup-cpu-boost \
-  --startup-probe-path=/api/health \
-  --startup-probe-period=10 \
-  --startup-probe-failure-threshold=3 \
+  --cpu-boost \
   --set-env-vars="FIREBASE_PROJECT_ID=angsana-exchange,GCP_PROJECT_ID=angsana-exchange,GCP_REGION=europe-west2,NODE_ENV=production"
 ```
 
@@ -385,10 +382,7 @@ For each deployment:
      --max-instances=5 \
      --timeout=60 \
      --concurrency=80 \
-     --startup-cpu-boost \
-     --startup-probe-path=/api/health \
-     --startup-probe-period=10 \
-     --startup-probe-failure-threshold=3 \
+     --cpu-boost \
      --set-env-vars="FIREBASE_PROJECT_ID=angsana-exchange,GCP_PROJECT_ID=angsana-exchange,GCP_REGION=europe-west2,NODE_ENV=production"
    ```
 
