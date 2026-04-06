@@ -181,23 +181,50 @@ gcloud run deploy angsana-exchange \
 
 ## Custom Domain
 
-### Domain Mapping
+### Approach: Firebase Hosting as Reverse Proxy
 
-```bash
-gcloud run domain-mappings create \
-  --service=angsana-exchange \
-  --domain=exchange.angsana-uk.com \
-  --project=angsana-exchange \
-  --region=europe-west2
+Cloud Run domain mappings are not supported in `europe-west2`. Instead, we use Firebase Hosting as a reverse proxy — the same pattern used for `api.angsana-uk.com` on the platform router.
+
+**How it works:** Firebase Hosting receives requests on `exchange.angsana-uk.com`, then proxies all traffic to the Cloud Run service via the rewrite rule in `firebase.json`:
+
+```json
+{
+  "hosting": {
+    "public": "public",
+    "rewrites": [
+      {
+        "source": "**",
+        "run": {
+          "serviceId": "angsana-exchange",
+          "region": "europe-west2"
+        }
+      }
+    ]
+  }
+}
 ```
 
-After running, add the output DNS records (CNAME or A records) at the domain registrar for `exchange.angsana-uk.com`.
+### Deploy Firebase Hosting
+
+```bash
+firebase deploy --only hosting --project angsana-exchange
+```
+
+### Connect Custom Domain
+
+Add the custom domain via the Firebase console:
+1. Go to Firebase console → Hosting → Custom domains
+2. Add `exchange.angsana-uk.com`
+3. Firebase will provide DNS records (A records) to add at GoDaddy
+4. Add the DNS records at GoDaddy for `exchange.angsana-uk.com`
+5. Wait for DNS propagation and TLS auto-provisioning
 
 | Property | Value |
 |----------|-------|
 | Domain | `exchange.angsana-uk.com` |
-| TLS | Auto-provisioned by Cloud Run |
-| DNS records | `TODO: Record after domain mapping creation` |
+| Routing | Firebase Hosting → Cloud Run (rewrite) |
+| TLS | Auto-provisioned by Firebase Hosting |
+| DNS records | `TODO: Record after domain setup` |
 
 ### Firebase Auth Authorised Domains
 
@@ -331,11 +358,8 @@ gcloud run services describe angsana-exchange \
   --project=angsana-exchange \
   --region=europe-west2
 
-# Check domain mapping
-gcloud run domain-mappings describe \
-  --domain=exchange.angsana-uk.com \
-  --project=angsana-exchange \
-  --region=europe-west2
+# Check Firebase Hosting
+firebase hosting:sites:list --project angsana-exchange
 
 # Check enabled APIs
 gcloud services list --project=angsana-exchange --enabled
