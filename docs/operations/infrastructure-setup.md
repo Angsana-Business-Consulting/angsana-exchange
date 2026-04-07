@@ -114,7 +114,9 @@ No custom service accounts needed. Exchange talks to its own Firestore in the sa
 ### Build & Push Image
 
 ```bash
-# From the angsana-exchange repo root:
+# IMPORTANT: Must be run from the angsana-exchange directory (where Dockerfile lives):
+cd angsana-exchange
+
 gcloud builds submit \
   --project=angsana-exchange \
   --region=europe-west2 \
@@ -142,6 +144,14 @@ gcloud run deploy angsana-exchange \
   --cpu-boost \
   --set-env-vars="FIREBASE_PROJECT_ID=angsana-exchange,GCP_PROJECT_ID=angsana-exchange,GCP_REGION=europe-west2,NODE_ENV=production"
 ```
+
+### Flush Firebase Hosting CDN (Required After Every Deploy)
+
+```bash
+firebase deploy --only hosting --project angsana-exchange
+```
+
+> **Critical:** Firebase Hosting sits in front of Cloud Run as a CDN reverse-proxy. Without this step, the CDN may continue serving stale HTML that references old JavaScript chunk hashes from a previous build, causing `ChunkLoadError` / blank pages for users. Always run this after deploying to Cloud Run.
 
 ### Cloud Run Configuration
 
@@ -371,7 +381,12 @@ curl -s https://api.angsana-uk.com/api/v1/exchange/prod/health | jq .
 
 For each deployment:
 
-1. Build and push:
+1. **cd** into the angsana-exchange directory (Dockerfile must be in the current directory):
+   ```bash
+   cd angsana-exchange
+   ```
+
+2. Build and push:
    ```bash
    gcloud builds submit \
      --project=angsana-exchange \
@@ -379,7 +394,7 @@ For each deployment:
      --tag=europe-west2-docker.pkg.dev/angsana-exchange/exchange-images/exchange:latest
    ```
 
-2. Deploy:
+3. Deploy to Cloud Run:
    ```bash
    gcloud run deploy angsana-exchange \
      --project=angsana-exchange \
@@ -398,12 +413,18 @@ For each deployment:
      --set-env-vars="FIREBASE_PROJECT_ID=angsana-exchange,GCP_PROJECT_ID=angsana-exchange,GCP_REGION=europe-west2,NODE_ENV=production"
    ```
 
-3. Verify:
+4. Flush the Firebase Hosting CDN cache (required after every Cloud Run deploy):
+   ```bash
+   firebase deploy --only hosting --project angsana-exchange
+   ```
+   > **Why?** Firebase Hosting sits in front of Cloud Run as a CDN. Without this step, the CDN may serve stale HTML referencing old chunk hashes, causing ChunkLoadError for users.
+
+5. Verify:
    ```bash
    curl -s https://exchange.angsana-uk.com/api/health | jq .
    ```
 
-4. Smoke test: log in with keith@angsana.com, verify campaigns load.
+6. Smoke test: open an incognito window, log in with keith@angsana.com, verify campaigns load.
 
 ---
 

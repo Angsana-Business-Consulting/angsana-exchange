@@ -46,6 +46,11 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# NEXT_PUBLIC_* vars are inlined in client JS at build time, but server-side
+# API routes (e.g. send-password-reset) still need them at runtime.
+# Copy .env.production so Next.js standalone can load them.
+COPY --from=builder /app/.env.production ./
+
 USER nextjs
 
 EXPOSE 8080
