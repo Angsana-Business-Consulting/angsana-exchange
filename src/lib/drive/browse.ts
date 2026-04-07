@@ -1,9 +1,13 @@
 // =============================================================================
 // Angsana Exchange — Drive Browse
 // Slice 7A: Google Drive API Connectivity & Browse Endpoint
+// Updated for Shared Drive support (Slice 7A Step 2/3 Revision)
 //
 // Lists folder contents via the Drive API. Returns structured DriveItem[]
 // with no direct Drive URLs (webViewLink is intentionally excluded).
+//
+// Supports both Shared Drives (new clients with driveId) and regular folders
+// (legacy clients with driveFolderId) via the sharedDriveId parameter.
 // =============================================================================
 
 import { getDriveClient } from './client';
@@ -16,18 +20,40 @@ import { DRIVE_FOLDER_MIME_TYPE, type DriveItem } from './types';
  * folders first then alphabetical by name.
  *
  * @param folderId - The Google Drive folder ID to list
+ * @param sharedDriveId - If provided, uses Shared Drive query mode
+ *   (corpora: 'drive', driveId). Required when listing the root of a
+ *   Shared Drive. For subfolder listings within a Shared Drive, the
+ *   'in parents' query works with supportsAllDrives alone, but passing
+ *   sharedDriveId ensures consistent behaviour.
  * @returns Array of DriveItem objects (no direct Drive URLs)
  * @throws Error if the Drive API call fails (caller should handle)
  */
-export async function listFolderContents(folderId: string): Promise<DriveItem[]> {
+export async function listFolderContents(
+  folderId: string,
+  sharedDriveId?: string
+): Promise<DriveItem[]> {
   const drive = getDriveClient();
 
-  const response = await drive.files.list({
+  // Build the files.list params — Shared Drive vs regular folder
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const listParams: any = {
     q: `'${folderId}' in parents and trashed = false`,
     fields: 'files(id, name, mimeType, size, modifiedTime, createdTime, iconLink, webViewLink)',
     orderBy: 'folder,name',
     pageSize: 100,
-  });
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+  };
+
+  // When listing within a Shared Drive, set corpora to 'drive' and specify
+  // the driveId. This is essential for root-level listings where the parent
+  // IS the Shared Drive ID.
+  if (sharedDriveId) {
+    listParams.corpora = 'drive';
+    listParams.driveId = sharedDriveId;
+  }
+
+  const response = await drive.files.list(listParams);
 
   const files = response.data.files || [];
 
@@ -60,7 +86,7 @@ export async function listFolderContents(folderId: string): Promise<DriveItem[]>
  * Handles folders created by anyone (Make.com, AMs manually, Exchange).
  *
  * @param targetFolderId - The folder the caller wants to browse
- * @param rootFolderId - The client's root driveFolderId from config
+ * @param rootFolderId - The client's root driveId or driveFolderId from config
  * @returns true if targetFolderId is within rootFolderId's tree
  */
 export async function isFolderWithinRoot(
@@ -95,7 +121,6 @@ export async function isFolderWithinRoot(
       // Check if the target folder is among the children at this level
       for (const folder of folders) {
         if (folder.id === targetFolderId) {
-          console.log(`[drive/browse] isFolderWithinRoot: found ${targetFolderId} at depth ${depth + 1} under ${parentId}`);
           return true;
         }
         // Queue this folder for next-level search
@@ -108,6 +133,59 @@ export async function isFolderWithinRoot(
     currentLevel = nextLevel;
   }
 
-  console.log(`[drive/browse] isFolderWithinRoot: ${targetFolderId} not found in tree rooted at ${rootFolderId}`);
+  return false;
+}
+
+/**
+ * Verify that a target file (not a folder) exists within a client's folder tree
+ * using a top-down breadth-first search from the root.
+ *
+ * Same approach as isFolderWithinRoot but lists ALL items (not just folders)
+ * at each level and checks if the target fileId appears. This works with
+ * inherited sharing where files.get doesn't return the `parents` field.
+ *
+ * @param targetFileId - The file ID the caller wants to download
+ * @param rootFolderId - The client's root driveId or driveFolderId from config
+ * @returns true if targetFileId is found anywhere in rootFolderId's tree
+ */
+export async function isFileWithinRoot(
+  targetFileId: string,
+  rootFolderId: string
+): Promise<boolean> {
+  const drive = getDriveClient();
+
+  // BFS: start with the root folder, expand subfolders level by level
+  let currentLevel = [rootFolderId];
+
+  for (let depth = 0; depth < 5; depth++) {
+    if (currentLevel.length === 0) break;
+
+    const nextLevel: string[] = [];
+
+    for (const parentId of currentLevel) {
+      const response = await drive.files.list({
+        q: `'${parentId}' in parents and trashed = false`,
+        fields: 'files(id, mimeType)',
+        pageSize: 200,
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      });
+
+      const items = response.data.files || [];
+
+      for (const item of items) {
+        if (item.id === targetFileId) {
+          return true;
+        }
+        // Queue subfolders for next-level search
+        if (item.mimeType === DRIVE_FOLDER_MIME_TYPE && item.id) {
+          nextLevel.push(item.id);
+        }
+      }
+    }
+
+    currentLevel = nextLevel;
+  }
+
   return false;
 }

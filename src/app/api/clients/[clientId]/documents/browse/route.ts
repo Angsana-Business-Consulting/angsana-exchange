@@ -1,12 +1,15 @@
 // =============================================================================
 // Angsana Exchange — Document Browse API Route
 // Slice 7A: Google Drive API Connectivity & Browse Endpoint
+// Updated for Shared Drive support (Slice 7A Step 2/3 Revision)
 //
 // GET /api/clients/{clientId}/documents/browse[?folderId={subfolderId}]
 //
-// Lists the contents of a client's Google Drive folder. Internal roles only
-// for this step. Client roles return 403 (opened in a later step with
-// visibility filtering).
+// Lists the contents of a client's Google Drive folder. Supports both
+// Shared Drives (driveId) and legacy regular folders (driveFolderId).
+//
+// Internal roles only for this step. Client roles return 403 (opened in a
+// later step with visibility filtering).
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -70,7 +73,7 @@ export async function GET(
     );
   }
 
-  // ── Read client config to get driveFolderId ─────────────────────────────
+  // ── Read client config to get driveId or driveFolderId ──────────────────
   const configDoc = await adminDb
     .collection('tenants')
     .doc(user.tenantId)
@@ -86,9 +89,13 @@ export async function GET(
   }
 
   const configData = configDoc.data()!;
-  const driveFolderId = configData.driveFolderId as string | undefined;
 
-  if (!driveFolderId) {
+  // driveId = Shared Drive (new model), driveFolderId = regular folder (legacy)
+  const driveId = configData.driveId as string | undefined;
+  const driveFolderId = configData.driveFolderId as string | undefined;
+  const rootId = driveId || driveFolderId;
+
+  if (!rootId) {
     return NextResponse.json(
       { error: 'No Drive folder configured for this client', code: 'NO_DRIVE_FOLDER' },
       { status: 404 }
@@ -98,14 +105,12 @@ export async function GET(
   // ── Determine target folder ─────────────────────────────────────────────
   const { searchParams } = new URL(request.url);
   const requestedFolderId = searchParams.get('folderId');
-  const targetFolderId = requestedFolderId || driveFolderId;
-
-  console.log(`[documents/browse] clientId=${clientId} driveFolderId="${driveFolderId}" requestedFolderId="${requestedFolderId}" targetFolderId="${targetFolderId}"`);
+  const targetFolderId = requestedFolderId || rootId;
 
   // ── Subfolder security: verify folder is within client's tree ───────────
-  if (requestedFolderId && requestedFolderId !== driveFolderId) {
+  if (requestedFolderId && requestedFolderId !== rootId) {
     try {
-      const isValid = await isFolderWithinRoot(requestedFolderId, driveFolderId);
+      const isValid = await isFolderWithinRoot(requestedFolderId, rootId);
       if (!isValid) {
         return NextResponse.json(
           { error: 'Forbidden: folder is not within this client\'s Drive folder', code: 'FORBIDDEN' },
@@ -131,7 +136,8 @@ export async function GET(
 
   // ── List folder contents ────────────────────────────────────────────────
   try {
-    const items = await listFolderContents(targetFolderId);
+    // Pass sharedDriveId only when using the new Shared Drive model
+    const items = await listFolderContents(targetFolderId, driveId || undefined);
 
     return NextResponse.json({
       success: true,
