@@ -264,7 +264,8 @@ export type ManagedListName =
   | 'geographies'
   | 'titleBands'
   | 'companySizes'
-  | 'therapyAreas';
+  | 'therapyAreas'
+  | 'documentFolders';
 
 /**
  * A single item within a managed list.
@@ -407,11 +408,11 @@ export type ActionStatus = 'open' | 'in-progress' | 'done' | 'blocked';
 export type ActionPriority = 'high' | 'medium' | 'low';
 
 /**
- * Source of an action — either from a check-in or manually created.
+ * Source of an action — how it was created.
  */
 export interface ActionSource {
-  type: 'checkin' | 'manual';
-  ref?: string; // checkInId when type is 'checkin'
+  type: 'checkin' | 'manual' | 'wishlist' | 'document_upload';
+  ref?: string; // checkInId, wishlistId, or documentId depending on type
 }
 
 /**
@@ -648,4 +649,122 @@ export const MANAGED_LIST_CONFIG: Record<
     description: 'For healthcare & life sciences clients',
     hasOrientation: false,
   },
+  documentFolders: {
+    label: 'Document Folders',
+    description: 'Canonical folder structure for client Drive folders — defines visibility',
+    hasOrientation: false,
+  },
 };
+
+// =============================================================================
+// Document Folders (Slice 7A Step 4)
+// =============================================================================
+
+/**
+ * Folder visibility — determines whether files in this folder are visible
+ * to client users or internal-only.
+ */
+export type FolderVisibility = 'client-visible' | 'internal-only';
+
+/**
+ * A single entry in the Document Folders managed list.
+ * Stored at tenants/{tenantId}/managedLists/documentFolders as an items array.
+ *
+ * This is a different schema from the generic ManagedListItem — it has
+ * folder-specific fields (visibility, parentCategory, isContainer, sortOrder).
+ */
+export interface DocumentFolderItem {
+  /** Stable unique key. Immutable after creation. E.g. "targeting", "working". */
+  folderCategory: string;
+  /** Display name of the folder as created in Drive. E.g. "Targeting", "Working". */
+  name: string;
+  /** "client-visible" or "internal-only". Locked once files exist in this category. */
+  visibility: FolderVisibility;
+  /** Null for root-level folders. Set to the folderCategory of the parent for nested folders. */
+  parentCategory: string | null;
+  /** Display ordering in UI and provisioning. Lower numbers first. */
+  sortOrder: number;
+  /** Soft-delete flag. Inactive folders are hidden from new provisioning. */
+  active: boolean;
+  /** If true, this folder is a structural container only. Files cannot be placed in it. */
+  isContainer: boolean;
+}
+
+// =============================================================================
+// Document Registry (Slice 7A Step 4)
+// =============================================================================
+
+/**
+ * How a document registry entry was created.
+ */
+export type DocumentRegistrySource = 'exchange_upload' | 'manual_import' | 'drive_backfill' | 'make_automation';
+
+/**
+ * Document registry entry status.
+ */
+export type DocumentStatus = 'active' | 'deleted';
+
+/**
+ * A registered document in Firestore.
+ * Stored at tenants/{tenantId}/clients/{clientId}/documents/{documentId}
+ */
+export interface DocumentRegistryEntry {
+  /** Firestore document ID (auto-generated) */
+  documentId: string;
+  /** Google Drive file ID. Immutable after creation. */
+  driveFileId: string;
+  /** Display name of the file. Updated on rename. */
+  name: string;
+  /** MIME type of the file as reported by Drive. */
+  mimeType: string;
+  /** File size in bytes at upload time. */
+  size: number;
+  /** Stable key from canonical folder template (e.g. "targeting", "working"). */
+  folderCategory: string;
+  /** Drive folder ID where the file resides. */
+  folderId: string;
+  /** Resolved visibility: "client-visible" or "internal-only". */
+  visibility: FolderVisibility;
+  /** "active" or "deleted". */
+  status: DocumentStatus;
+  /** Optional campaign ID. Settable at upload, editable later. */
+  campaignRef: string | null;
+  /** How this entry was created. */
+  registrySource: DocumentRegistrySource;
+  /** UID of the user who uploaded the file. */
+  uploadedBy: string;
+  /** Timestamp when the file was uploaded (ISO string). */
+  uploadedAt: string;
+  /** Updated on rename or metadata edit (ISO string). */
+  lastModifiedAt: string;
+  /** UID of the user who last modified the entry. */
+  lastModifiedBy: string;
+  /** Set when status changes to "deleted" (ISO string). Null while active. */
+  deletedAt: string | null;
+  /** UID of user who deleted the file. Null while active. */
+  deletedBy: string | null;
+  /** Always "gdrive" for now. Future-proofs for storage abstraction. */
+  storageBackend: 'gdrive';
+}
+
+// =============================================================================
+// Folder Map (Slice 7A Step 4)
+// =============================================================================
+
+/**
+ * A single entry in a client's folderMap — maps a Drive folder ID to its
+ * canonical folder category and display name.
+ */
+export interface FolderMapEntry {
+  /** The canonical folder category key (e.g. "targeting", "working") */
+  folderCategory: string;
+  /** Display name of the folder in Drive */
+  name: string;
+}
+
+/**
+ * The folderMap stored on a client's config document.
+ * Maps Drive folder IDs to their canonical folder category and name.
+ * Written at provisioning time, read by upload/browse/register operations.
+ */
+export type FolderMap = Record<string, FolderMapEntry>;

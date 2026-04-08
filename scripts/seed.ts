@@ -303,6 +303,24 @@ async function seedFirestore() {
   });
   console.log('    ✓ therapyAreas (9 items)');
 
+  // 6.7 documentFolders (9 entries per Slice 7A Step 4 spec)
+  await managedListsRef.doc('documentFolders').set({
+    items: [
+      { folderCategory: 'targeting', name: 'Targeting', visibility: 'client-visible', parentCategory: null, sortOrder: 1, active: true, isContainer: false },
+      { folderCategory: 'tlm-ready-material', name: 'TLM Ready Material', visibility: 'client-visible', parentCategory: null, sortOrder: 2, active: true, isContainer: false },
+      { folderCategory: 'client-material', name: 'Client Material', visibility: 'client-visible', parentCategory: null, sortOrder: 3, active: true, isContainer: false },
+      { folderCategory: 'scripts', name: 'Scripts', visibility: 'client-visible', parentCategory: null, sortOrder: 4, active: true, isContainer: true },
+      { folderCategory: 'scripts-client-approved', name: 'Client Approved', visibility: 'client-visible', parentCategory: 'scripts', sortOrder: 5, active: true, isContainer: false },
+      { folderCategory: 'scripts-internal-working', name: 'Internal Working', visibility: 'internal-only', parentCategory: 'scripts', sortOrder: 6, active: true, isContainer: false },
+      { folderCategory: 'ai-source-documents', name: 'AI Source Documents', visibility: 'client-visible', parentCategory: null, sortOrder: 7, active: true, isContainer: false },
+      { folderCategory: 'general', name: 'General', visibility: 'client-visible', parentCategory: null, sortOrder: 8, active: true, isContainer: false },
+      { folderCategory: 'working', name: 'Working', visibility: 'internal-only', parentCategory: null, sortOrder: 9, active: true, isContainer: false },
+    ],
+    updatedAt: now,
+    updatedBy: 'seed-script',
+  });
+  console.log('    ✓ documentFolders (9 items)');
+
   // --- Client: Cegid Spain (full, with campaigns) ---
   console.log('  Seeding client: cegid-spain...');
   const cegidRef = tenantRef.collection('clients').doc('cegid-spain');

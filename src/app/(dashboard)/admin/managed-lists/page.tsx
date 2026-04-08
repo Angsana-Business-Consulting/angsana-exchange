@@ -2,7 +2,7 @@ import { adminDb } from '@/lib/firebase/admin';
 import { getUserContext } from '@/lib/auth/server';
 import { redirect } from 'next/navigation';
 import { ManagedListsClient } from './ManagedListsClient';
-import type { ManagedListName, ManagedListItem } from '@/types';
+import type { ManagedListName, ManagedListItem, DocumentFolderItem } from '@/types';
 
 const LIST_NAMES: ManagedListName[] = [
   'serviceTypes',
@@ -18,7 +18,7 @@ const LIST_NAMES: ManagedListName[] = [
  *
  * Server component that:
  * 1. Verifies the user is internal-admin
- * 2. Fetches all managed lists from Firestore
+ * 2. Fetches all managed lists from Firestore (generic + documentFolders)
  * 3. Passes data to the client component for CRUD interactions
  */
 export default async function ManagedListsPage() {
@@ -31,28 +31,36 @@ export default async function ManagedListsPage() {
 
   const { tenantId } = user.claims;
 
-  // Fetch all managed lists in parallel
-  const results = await Promise.all(
-    LIST_NAMES.map(async (listName) => {
-      const doc = await adminDb
-        .collection('tenants')
-        .doc(tenantId)
-        .collection('managedLists')
-        .doc(listName)
-        .get();
+  // Fetch generic managed lists + documentFolders in parallel
+  const [genericResults, docFoldersSnap] = await Promise.all([
+    Promise.all(
+      LIST_NAMES.map(async (listName) => {
+        const doc = await adminDb
+          .collection('tenants')
+          .doc(tenantId)
+          .collection('managedLists')
+          .doc(listName)
+          .get();
 
-      const data = doc.exists ? doc.data()! : { items: [] };
-      return {
-        listName,
-        items: (data.items || []) as ManagedListItem[],
-        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || null,
-        updatedBy: data.updatedBy || null,
-      };
-    })
-  );
+        const data = doc.exists ? doc.data()! : { items: [] };
+        return {
+          listName,
+          items: (data.items || []) as ManagedListItem[],
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || null,
+          updatedBy: data.updatedBy || null,
+        };
+      })
+    ),
+    adminDb
+      .collection('tenants')
+      .doc(tenantId)
+      .collection('managedLists')
+      .doc('documentFolders')
+      .get(),
+  ]);
 
   const initialData: Record<string, { items: ManagedListItem[]; updatedAt: string | null; updatedBy: string | null }> = {};
-  for (const result of results) {
+  for (const result of genericResults) {
     initialData[result.listName] = {
       items: result.items,
       updatedAt: result.updatedAt,
@@ -60,5 +68,17 @@ export default async function ManagedListsPage() {
     };
   }
 
-  return <ManagedListsClient initialData={initialData} />;
+  const docFoldersData = docFoldersSnap.exists ? docFoldersSnap.data()! : { items: [] };
+  const documentFoldersInitial = {
+    items: (docFoldersData.items || []) as DocumentFolderItem[],
+    updatedAt: docFoldersData.updatedAt?.toDate?.()?.toISOString() || null,
+    updatedBy: docFoldersData.updatedBy || null,
+  };
+
+  return (
+    <ManagedListsClient
+      initialData={initialData}
+      documentFoldersInitial={documentFoldersInitial}
+    />
+  );
 }
