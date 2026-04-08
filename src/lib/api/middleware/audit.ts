@@ -13,7 +13,7 @@
 import { adminDb } from '@/lib/firebase/admin';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { AUDIT_LOG_TTL_DAYS } from '../config';
-import type { ApiAuthContext, ApiAuthMethod } from '../types';
+import type { ApiAuthContext } from '../types';
 
 interface AuditLogParams {
   method: string;

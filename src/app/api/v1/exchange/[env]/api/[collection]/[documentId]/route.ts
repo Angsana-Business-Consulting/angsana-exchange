@@ -13,7 +13,7 @@ import { authenticateRequest, resolveClientId } from '@/lib/api/middleware/auth'
 import { logApiRequest } from '@/lib/api/middleware/audit';
 import { getCollectionConfig, isOperationAllowed, resolveFirestorePath } from '@/lib/api/collections';
 import { singleResponse, updateResponse, deleteResponse, errorResponse } from '@/lib/api/response';
-import type { ApiAuthContext } from '@/lib/api/types';
+// ApiAuthContext used implicitly via setupDocumentRequest result type
 
 export const runtime = 'nodejs';
 
@@ -88,6 +88,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     return result.error;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { authContext, docRef, slug, env, documentId, resolvedClientId } = result as Exclude<typeof result, { error: any }>;
 
   try {
@@ -119,6 +120,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     return result.error;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { authContext, docRef, slug, env, documentId, resolvedClientId } = result as Exclude<typeof result, { error: any }>;
 
   try {
@@ -162,6 +164,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     return result.error;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { authContext, docRef, slug, env, documentId, resolvedClientId } = result as Exclude<typeof result, { error: any }>;
 
   try {
@@ -204,6 +207,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     return result.error;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { authContext, docRef, slug, env, documentId, resolvedClientId } = result as Exclude<typeof result, { error: any }>;
 
   try {

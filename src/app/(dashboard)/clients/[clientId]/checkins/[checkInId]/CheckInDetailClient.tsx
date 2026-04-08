@@ -58,7 +58,7 @@ export function CheckInDetailClient({
   checkin,
   linkedActions,
   clientId,
-  clientName,
+  clientName: _clientName,
   campaignMap,
   isInternal,
 }: {

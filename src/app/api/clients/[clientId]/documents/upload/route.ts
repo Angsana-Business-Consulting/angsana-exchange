@@ -137,7 +137,9 @@ export async function POST(
   const configData = configDoc.data()!;
 
   // driveId = Shared Drive (new model), driveFolderId = regular folder (legacy)
-  const rootId = (configData.driveId || configData.driveFolderId) as string | undefined;
+  const driveId = configData.driveId as string | undefined;
+  const rootId = (driveId || configData.driveFolderId) as string | undefined;
+  const isSharedDrive = !!driveId;
 
   if (!rootId) {
     return NextResponse.json(
@@ -148,7 +150,7 @@ export async function POST(
 
   // ── Verify target folder is within client's Drive tree ──────────────────
   try {
-    const isValid = await isFolderWithinRoot(folderId, rootId);
+    const isValid = await isFolderWithinRoot(folderId, rootId, isSharedDrive);
     if (!isValid) {
       return NextResponse.json(
         { error: 'Forbidden: target folder is not within this client\'s Drive folder', code: 'FORBIDDEN' },
@@ -176,7 +178,7 @@ export async function POST(
     const buffer = Buffer.from(await file.arrayBuffer());
     const mimeType = file.type || 'application/octet-stream';
 
-    const result = await uploadToDrive(file.name, mimeType, buffer, folderId);
+    const result = await uploadToDrive(file.name, mimeType, buffer, folderId, isSharedDrive);
 
     return NextResponse.json(
       {

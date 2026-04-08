@@ -10,7 +10,7 @@
 // (legacy clients with driveFolderId) via the sharedDriveId parameter.
 // =============================================================================
 
-import { getDriveClient } from './client';
+import { getDriveClient, getDriveClientAsSA } from './client';
 import { DRIVE_FOLDER_MIME_TYPE, type DriveItem } from './types';
 
 /**
@@ -32,7 +32,9 @@ export async function listFolderContents(
   folderId: string,
   sharedDriveId?: string
 ): Promise<DriveItem[]> {
-  const drive = getDriveClient();
+  // Use the JWT SA client for Shared Drives (identity must match the SA added
+  // as Content Manager). Use ADC client for legacy regular folders (Cegid Spain).
+  const drive = sharedDriveId ? await getDriveClientAsSA() : getDriveClient();
 
   // Build the files.list params — Shared Drive vs regular folder
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -91,12 +93,13 @@ export async function listFolderContents(
  */
 export async function isFolderWithinRoot(
   targetFolderId: string,
-  rootFolderId: string
+  rootFolderId: string,
+  isSharedDrive?: boolean
 ): Promise<boolean> {
   // If they're the same, it's the root — always valid
   if (targetFolderId === rootFolderId) return true;
 
-  const drive = getDriveClient();
+  const drive = isSharedDrive ? await getDriveClientAsSA() : getDriveClient();
 
   // BFS: start with the root's direct children, expand level by level
   let currentLevel = [rootFolderId];
@@ -150,9 +153,10 @@ export async function isFolderWithinRoot(
  */
 export async function isFileWithinRoot(
   targetFileId: string,
-  rootFolderId: string
+  rootFolderId: string,
+  isSharedDrive?: boolean
 ): Promise<boolean> {
-  const drive = getDriveClient();
+  const drive = isSharedDrive ? await getDriveClientAsSA() : getDriveClient();
 
   // BFS: start with the root folder, expand subfolders level by level
   let currentLevel = [rootFolderId];

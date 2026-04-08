@@ -12,7 +12,7 @@
 // =============================================================================
 
 import { Readable } from 'stream';
-import { getDriveClient } from './client';
+import { getDriveClient, getDriveClientAsSA } from './client';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,9 +46,12 @@ export async function uploadToDrive(
   fileName: string,
   mimeType: string,
   content: Buffer | Readable,
-  targetFolderId: string
+  targetFolderId: string,
+  isSharedDrive?: boolean
 ): Promise<UploadResult> {
-  const drive = getDriveClient();
+  // Use the JWT SA client for Shared Drives (identity must match the SA added
+  // as Content Manager). Use ADC client for legacy regular folders.
+  const drive = isSharedDrive ? await getDriveClientAsSA() : getDriveClient();
 
   const response = await drive.files.create({
     supportsAllDrives: true,

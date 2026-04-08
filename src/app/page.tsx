@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getUserContext, isInternalRole } from '@/lib/auth/server';
+import { getUserContext } from '@/lib/auth/server';
 
 /**
  * Root page — reads the authenticated user's role and redirects

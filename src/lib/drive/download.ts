@@ -12,7 +12,7 @@
 // =============================================================================
 
 import { Readable } from 'stream';
-import { getDriveClient } from './client';
+import { getDriveClient, getDriveClientAsSA } from './client';
 
 // ─── Google Workspace MIME type mappings ──────────────────────────────────────
 
@@ -70,8 +70,10 @@ export interface DownloadResult {
  * @returns DownloadResult with stream, metadata, and export info
  * @throws Error if the file doesn't exist or Drive API fails
  */
-export async function downloadDriveFile(fileId: string): Promise<DownloadResult> {
-  const drive = getDriveClient();
+export async function downloadDriveFile(fileId: string, isSharedDrive?: boolean): Promise<DownloadResult> {
+  // Use the JWT SA client for Shared Drives (identity must match the SA added
+  // as Content Manager). Use ADC client for legacy regular folders.
+  const drive = isSharedDrive ? await getDriveClientAsSA() : getDriveClient();
 
   // 1. Get file metadata first
   const metadataResponse = await drive.files.get({

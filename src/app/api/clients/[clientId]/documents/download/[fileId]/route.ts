@@ -117,7 +117,9 @@ export async function GET(
   const configData = configDoc.data()!;
 
   // driveId = Shared Drive (new model), driveFolderId = regular folder (legacy)
-  const rootId = (configData.driveId || configData.driveFolderId) as string | undefined;
+  const driveId = configData.driveId as string | undefined;
+  const rootId = (driveId || configData.driveFolderId) as string | undefined;
+  const isSharedDrive = !!driveId;
 
   if (!rootId) {
     return NextResponse.json(
@@ -131,7 +133,7 @@ export async function GET(
   // Same approach as isFolderWithinRoot — works with inherited sharing where
   // files.get doesn't return the `parents` field.
   try {
-    const fileInTree = await isFileWithinRoot(fileId, rootId);
+    const fileInTree = await isFileWithinRoot(fileId, rootId, isSharedDrive);
     if (!fileInTree) {
       return NextResponse.json(
         { error: 'Forbidden: file is not within this client\'s Drive folder', code: 'FORBIDDEN' },
@@ -149,7 +151,7 @@ export async function GET(
 
   // ── Download / export the file ──────────────────────────────────────────
   try {
-    const result = await downloadDriveFile(fileId);
+    const result = await downloadDriveFile(fileId, isSharedDrive);
 
     // Determine response headers
     const contentType = result.isExport

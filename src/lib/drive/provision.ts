@@ -1,25 +1,36 @@
 // =============================================================================
-// Angsana Exchange — Shared Drive Provisioning
+// Angsana Exchange — Shared Drive Provisioning (State Machine)
 // Slice 7A Step 2/3 Revision: Shared Drive Model
 //
-// Creates a Google Shared Drive for a client, adds the SA as a Content
-// Manager, and creates the canonical folder tree inside the Shared Drive.
+// State machine with early persistence and retry:
 //
-// The Shared Drive is created via domain-wide delegation (impersonated client)
-// because drives.create requires a Workspace user context. Once the SA is
-// added as Content Manager, all subsequent operations (folder creation,
-// browse, upload, download) use the regular non-impersonated SA client.
+//   State A — Create Shared Drive (via impersonated client)
+//   State B — Add SA as Content Manager
+//   State C — Persist driveId to Firestore IMMEDIATELY (before folder creation)
+//   State D — Create folder tree with retry (handles propagation delay)
+//   State E — Recovery: resume folder creation if driveId exists but folders pending
 //
 // The folder structure is driven by CANONICAL_FOLDER_TEMPLATE — the function
 // does not hard-code any folder names.
 // =============================================================================
 
-import { getDriveClient, getDriveClientWithImpersonation, getSAEmail } from './client';
+import { getDriveClientAsSA, getDriveClientWithImpersonation, getSAEmail } from './client';
 import { DRIVE_FOLDER_MIME_TYPE } from './types';
 import {
   CANONICAL_FOLDER_TEMPLATE,
   type FolderTemplateEntry,
 } from './folder-template';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+/** Max retry attempts for folder creation (handles permission propagation delay) */
+const FOLDER_CREATE_MAX_RETRIES = 5;
+
+/** Delay between retries in ms */
+const FOLDER_CREATE_RETRY_DELAY_MS = 2000;
+
+/** HTTP status codes that indicate propagation-related transient errors */
+const RETRYABLE_STATUS_CODES = [404, 403];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,58 +42,99 @@ export interface ProvisionedFolder {
   visibility: 'client-visible' | 'internal-only';
 }
 
-/** Result of a successful Shared Drive provisioning operation. */
-export interface ProvisionResult {
-  /** The Shared Drive ID — stored as driveId on the client config */
+/** Result of States A+B: Shared Drive created, SA added. */
+export interface SharedDriveCreationResult {
   sharedDriveId: string;
-  /** The Shared Drive display name */
   sharedDriveName: string;
-  /** All folders created inside the Shared Drive */
+}
+
+/** Result of State D: folder tree created. */
+export interface FolderCreationResult {
+  folders: ProvisionedFolder[];
+}
+
+/** Full provisioning result (all states complete). */
+export interface ProvisionResult {
+  sharedDriveId: string;
+  sharedDriveName: string;
   folders: ProvisionedFolder[];
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 /**
- * Create a single folder inside a Shared Drive.
+ * Determine if a Drive API error is retryable (propagation-related).
+ * Only retry on "File not found" (404) or permission errors (403)
+ * that occur immediately after adding SA membership.
+ * Do NOT retry on permanent failures (invalid parent, malformed request, auth scope errors).
+ */
+function isRetryableError(err: unknown): boolean {
+  const error = err as { code?: number; status?: number; message?: string };
+  const code = error.code || error.status;
+  if (code && RETRYABLE_STATUS_CODES.includes(code)) {
+    return true;
+  }
+  // Also catch "File not found" in error message for wrapped errors
+  const msg = error.message || '';
+  if (msg.includes('File not found') || msg.includes('notFound')) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Create a single folder inside a Shared Drive, with retry for propagation delays.
  *
  * Uses the regular (non-impersonated) Drive client — the SA is already a
  * Content Manager on the Shared Drive at this point.
- *
- * @param name - Folder display name
- * @param parentId - Parent folder or Shared Drive ID
- * @returns The newly created folder's Drive ID
  */
-async function createFolderInSharedDrive(
+async function createFolderWithRetry(
   name: string,
   parentId: string
 ): Promise<string> {
-  const drive = getDriveClient();
+  const drive = await getDriveClientAsSA();
 
-  const response = await drive.files.create({
-    supportsAllDrives: true,
-    requestBody: {
-      name,
-      mimeType: DRIVE_FOLDER_MIME_TYPE,
-      parents: [parentId],
-    },
-    fields: 'id',
-  });
+  for (let attempt = 1; attempt <= FOLDER_CREATE_MAX_RETRIES; attempt++) {
+    try {
+      const response = await drive.files.create({
+        supportsAllDrives: true,
+        requestBody: {
+          name,
+          mimeType: DRIVE_FOLDER_MIME_TYPE,
+          parents: [parentId],
+        },
+        fields: 'id',
+      });
 
-  const folderId = response.data.id;
-  if (!folderId) {
-    throw new Error(`Drive API returned no ID when creating folder "${name}"`);
+      const folderId = response.data.id;
+      if (!folderId) {
+        throw new Error(`Drive API returned no ID when creating folder "${name}"`);
+      }
+
+      if (attempt > 1) {
+        console.log(`[drive/provision] Folder "${name}" created on attempt ${attempt}`);
+      }
+      return folderId;
+    } catch (err) {
+      if (attempt < FOLDER_CREATE_MAX_RETRIES && isRetryableError(err)) {
+        console.log(
+          `[drive/provision] Retryable error creating folder "${name}" (attempt ${attempt}/${FOLDER_CREATE_MAX_RETRIES}), ` +
+          `waiting ${FOLDER_CREATE_RETRY_DELAY_MS}ms...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, FOLDER_CREATE_RETRY_DELAY_MS));
+        continue;
+      }
+      // Permanent failure or max retries exhausted
+      throw err;
+    }
   }
 
-  return folderId;
+  // Should never reach here, but TypeScript needs it
+  throw new Error(`Failed to create folder "${name}" after ${FOLDER_CREATE_MAX_RETRIES} attempts`);
 }
 
 /**
  * Recursively create folders from a template entry and its children.
- *
- * @param entries - Template entries to create
- * @param parentId - The Drive ID of the parent folder or Shared Drive
- * @param results - Accumulator array for created folder records
  */
 async function createFoldersFromTemplate(
   entries: FolderTemplateEntry[],
@@ -90,7 +142,7 @@ async function createFoldersFromTemplate(
   results: ProvisionedFolder[]
 ): Promise<void> {
   for (const entry of entries) {
-    const folderId = await createFolderInSharedDrive(entry.name, parentId);
+    const folderId = await createFolderWithRetry(entry.name, parentId);
 
     results.push({
       name: entry.name,
@@ -106,38 +158,30 @@ async function createFoldersFromTemplate(
   }
 }
 
-// ─── Public API ───────────────────────────────────────────────────────────────
+// ─── Public API: State Machine Steps ──────────────────────────────────────────
 
 /**
- * Provision a Google Shared Drive and canonical folder tree for a client.
+ * States A + B: Create Shared Drive and add SA as Content Manager.
  *
- * Steps:
- *   1. Create a Shared Drive named "{clientName} (Client)" via the
- *      impersonated client (domain-wide delegation).
- *   2. Add the SA as a Content Manager (organizer) on the Shared Drive
- *      so it can operate without impersonation going forward.
- *   3. Create the canonical folder tree inside the Shared Drive using
- *      the regular (non-impersonated) SA client.
+ * After this function returns, the caller MUST persist the driveId to
+ * Firestore (State C) before proceeding to folder creation.
  *
- * Idempotency: The requestId on drives.create is deterministic based on
- * clientId. If the same clientId is provisioned twice, Google returns the
- * existing Shared Drive instead of creating a duplicate.
- *
- * @param clientId - The client's Firestore document ID (used for idempotency key)
- * @param clientName - The client's display name (used in Shared Drive name)
- * @returns ProvisionResult with sharedDriveId and all created folder details
- * @throws Error if any Drive API call fails
+ * @param clientId - Client Firestore doc ID (used in requestId)
+ * @param clientName - Client display name (used in Shared Drive name)
+ * @returns SharedDriveCreationResult with the new driveId
  */
-export async function provisionClientFolders(
+export async function createSharedDrive(
   clientId: string,
   clientName: string
-): Promise<ProvisionResult> {
-  // ── 1. Create the Shared Drive via impersonated client ──────────────────
+): Promise<SharedDriveCreationResult> {
+  // ── State A: Create the Shared Drive via impersonated client ────────────
   const impersonatedDrive = await getDriveClientWithImpersonation();
   const sharedDriveName = `${clientName} (Client)`;
 
+  console.log(`[drive/provision] State A: Creating Shared Drive "${sharedDriveName}"...`);
+
   const sharedDriveResponse = await impersonatedDrive.drives.create({
-    requestId: `exchange-${clientId}`, // deterministic idempotency key
+    requestId: `exchange-${clientId}-${Date.now()}`,
     requestBody: {
       name: sharedDriveName,
     },
@@ -148,10 +192,12 @@ export async function provisionClientFolders(
     throw new Error('Drive API returned no ID when creating Shared Drive');
   }
 
-  // ── 2. Add SA as Content Manager (organizer) ────────────────────────────
-  // This allows the SA to operate without impersonation for all subsequent
-  // operations (browse, upload, download, folder creation).
+  console.log(`[drive/provision] State A complete: driveId=${sharedDriveId}`);
+
+  // ── State B: Add SA as Content Manager (organizer) ──────────────────────
   const saEmail = await getSAEmail();
+
+  console.log(`[drive/provision] State B: Adding SA ${saEmail} as Content Manager...`);
 
   await impersonatedDrive.permissions.create({
     fileId: sharedDriveId,
@@ -163,14 +209,66 @@ export async function provisionClientFolders(
     },
   });
 
-  // ── 3. Create canonical folder tree using regular SA client ─────────────
-  // The SA is now a Content Manager, so no impersonation needed.
+  console.log('[drive/provision] State B complete: SA added as Content Manager');
+
+  return { sharedDriveId, sharedDriveName };
+}
+
+/**
+ * State D: Create the canonical folder tree inside an existing Shared Drive.
+ *
+ * Handles permission propagation delays with retry logic.
+ * The SA must already be a Content Manager on the Shared Drive.
+ *
+ * @param sharedDriveId - The Shared Drive to create folders in
+ * @returns FolderCreationResult with all created folders
+ */
+export async function createFolderTree(
+  sharedDriveId: string
+): Promise<FolderCreationResult> {
+  console.log(`[drive/provision] State D: Creating folder tree in drive ${sharedDriveId}...`);
+
+  // ── Diagnostic: verify SA can see the Shared Drive before creating folders ──
+  const drive = await getDriveClientAsSA();
+  const saEmail = await getSAEmail();
+  console.log(`[drive/provision] Diagnostic: SA identity for folder ops: ${saEmail}`);
+
+  try {
+    const driveInfo = await drive.drives.get({
+      driveId: sharedDriveId,
+      fields: 'id,name',
+    });
+    console.log(`[drive/provision] Diagnostic: drives.get OK — name="${driveInfo.data.name}", id=${driveInfo.data.id}`);
+  } catch (diagErr) {
+    const err = diagErr as { code?: number; message?: string };
+    console.error(`[drive/provision] Diagnostic: drives.get FAILED — code=${err.code}, message=${err.message}`);
+    console.error(`[drive/provision] This means the SA (${saEmail}) cannot see the Shared Drive at all.`);
+    throw new Error(
+      `SA ${saEmail} cannot access Shared Drive ${sharedDriveId} via drives.get. ` +
+      `The SA may not be a member, or there is an identity mismatch. Error: ${err.message}`
+    );
+  }
+
+  try {
+    const listing = await drive.files.list({
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+      corpora: 'drive',
+      driveId: sharedDriveId,
+      q: 'trashed = false',
+      fields: 'files(id,name,parents)',
+    });
+    console.log(`[drive/provision] Diagnostic: files.list OK — ${listing.data.files?.length || 0} existing items`);
+  } catch (diagErr) {
+    const err = diagErr as { code?: number; message?: string };
+    console.error(`[drive/provision] Diagnostic: files.list FAILED — code=${err.code}, message=${err.message}`);
+    // Don't fail here — the drives.get passed, so folder creation may still work
+  }
+
   const folders: ProvisionedFolder[] = [];
   await createFoldersFromTemplate(CANONICAL_FOLDER_TEMPLATE, sharedDriveId, folders);
 
-  return {
-    sharedDriveId,
-    sharedDriveName,
-    folders,
-  };
+  console.log(`[drive/provision] State D complete: ${folders.length} folders created`);
+
+  return { folders };
 }

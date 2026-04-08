@@ -2,21 +2,21 @@
 // Angsana Exchange — Drive API Client
 // Slice 7A: Google Drive API Connectivity & Browse Endpoint
 //
-// Provides two Drive v3 clients:
-//   getDriveClient()                        — SA acting as itself (Content Manager)
+// Provides three Drive v3 clients:
+//   getDriveClient()                        — ADC (legacy, used for non-Shared-Drive ops)
+//   getDriveClientAsSA()                    — JWT as firebase-adminsdk SA (Shared Drive member)
 //   getDriveClientWithImpersonation()       — SA impersonating a Workspace user
 //
-// Credential loading strategy (for impersonation + SA email):
-//   1. GOOGLE_APPLICATION_CREDENTIALS file path (local dev)
-//   2. Secret Manager: fetch `firebase-admin-sa-key` secret (Cloud Run)
+// IMPORTANT: On Cloud Run, getDriveClient() (ADC) resolves to the Cloud Run
+// attached SA, NOT the firebase-adminsdk SA. These are different identities.
+// Since we add the firebase-adminsdk SA as Content Manager on Shared Drives,
+// all Shared Drive operations MUST use getDriveClientAsSA() which authenticates
+// with the same SA credentials loaded from Secret Manager / key file.
 //
-// The regular getDriveClient() uses GoogleAuth (ADC) and never needs the
-// key file — it works with both GOOGLE_APPLICATION_CREDENTIALS and the
-// Cloud Run metadata server automatically.
+// getDriveClient() (ADC) is kept for backwards compatibility with legacy
+// Drive folders (e.g., Cegid Spain) that were shared with the Cloud Run SA.
 //
 // Impersonation is ONLY needed for drives.create (creating Shared Drives).
-// All other operations (browse, upload, download, folder creation inside a
-// Shared Drive) use the regular client — the SA is a direct member.
 // =============================================================================
 
 import { google, type drive_v3 } from 'googleapis';
@@ -131,6 +131,44 @@ export function getDriveClient(): drive_v3.Drive {
 
   driveClient = google.drive({ version: 'v3', auth });
   return driveClient;
+}
+
+// ─── JWT Drive client (firebase-adminsdk SA as itself) ───────────────────────
+
+let saDriveClient: drive_v3.Drive | null = null;
+
+/**
+ * Returns a Drive v3 client authenticated as the firebase-adminsdk SA via JWT.
+ *
+ * IMPORTANT: This is the correct client for all Shared Drive operations.
+ * On Cloud Run, getDriveClient() (ADC) resolves to the Cloud Run attached SA,
+ * which is a DIFFERENT identity from the firebase-adminsdk SA that was added
+ * as Content Manager on Shared Drives. This function guarantees the caller
+ * identity matches the SA that has Shared Drive membership.
+ *
+ * Locally, this behaves identically to getDriveClient() because both use
+ * the same GOOGLE_APPLICATION_CREDENTIALS key file.
+ *
+ * Credentials are loaded from GOOGLE_APPLICATION_CREDENTIALS (local dev)
+ * or Secret Manager (Cloud Run). This is async because the Secret Manager
+ * call is async.
+ */
+export async function getDriveClientAsSA(): Promise<drive_v3.Drive> {
+  if (saDriveClient) return saDriveClient;
+
+  const credentials = await loadSACredentials();
+
+  console.log(`[drive/client] Creating JWT Drive client as SA: ${credentials.client_email}`);
+
+  const auth = new google.auth.JWT({
+    email: credentials.client_email,
+    key: credentials.private_key,
+    scopes: ['https://www.googleapis.com/auth/drive'],
+    // No subject — authenticating as the SA itself, not impersonating anyone
+  });
+
+  saDriveClient = google.drive({ version: 'v3', auth });
+  return saDriveClient;
 }
 
 // ─── Impersonated Drive client (SA impersonating a Workspace user) ───────────

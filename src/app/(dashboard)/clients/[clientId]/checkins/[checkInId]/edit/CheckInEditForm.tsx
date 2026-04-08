@@ -307,7 +307,7 @@ export function CheckInEditForm({
   checkin,
   linkedActions,
   clientId,
-  clientName,
+  clientName: _clientName,
   campaigns,
 }: {
   checkin: CheckIn;

@@ -110,7 +110,7 @@ export async function GET(
   // ── Subfolder security: verify folder is within client's tree ───────────
   if (requestedFolderId && requestedFolderId !== rootId) {
     try {
-      const isValid = await isFolderWithinRoot(requestedFolderId, rootId);
+      const isValid = await isFolderWithinRoot(requestedFolderId, rootId, !!driveId);
       if (!isValid) {
         return NextResponse.json(
           { error: 'Forbidden: folder is not within this client\'s Drive folder', code: 'FORBIDDEN' },

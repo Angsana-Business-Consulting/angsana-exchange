@@ -13,7 +13,6 @@ import {
   WhereCondition,
   WhereGroup,
   isWhereCondition,
-  isWhereGroup,
   flattenConditions,
 } from './query-parser';
 
@@ -22,6 +21,7 @@ type WhereFilterOp = '<' | '<=' | '==' | '!=' | '>=' | '>' | 'array-contains' | 
 export interface QueryBuildResult {
   query: FirebaseFirestore.Query;
   requiresClientFilter: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   clientFilter?: (doc: any) => boolean;
   warning?: string;
 }
@@ -104,10 +104,13 @@ function splitConditions(node: WhereGroup | WhereCondition): { firestoreConditio
 /**
  * Create a client-side filter function for a WHERE tree.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function createClientFilter(node: WhereGroup | WhereCondition): (doc: any) => boolean {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (doc: any) => evaluate(doc, node);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function evaluate(doc: any, node: WhereGroup | WhereCondition): boolean {
   if (isWhereCondition(node)) return evaluateSingle(doc, node);
   if (node.type === 'AND') return node.conditions.every(c => evaluate(doc, c));
@@ -115,6 +118,7 @@ function evaluate(doc: any, node: WhereGroup | WhereCondition): boolean {
   return false;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function evaluateSingle(doc: any, cond: WhereCondition): boolean {
   const value = getNestedValue(doc, cond.field);
   const cv = cond.value;
@@ -136,11 +140,13 @@ function evaluateSingle(doc: any, cond: WhereCondition): boolean {
     case '>=': return dv >= comp;
     case 'in': return Array.isArray(comp) && comp.includes(dv);
     case 'array-contains': return Array.isArray(dv) && dv.includes(comp);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     case 'array-contains-any': return Array.isArray(dv) && Array.isArray(comp) && comp.some((v: any) => dv.includes(v));
     default: return false;
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getNestedValue(obj: any, path: string): any {
   let value = obj;
   for (const key of path.split('.')) {
@@ -159,6 +165,7 @@ export async function buildFirestoreQuery(
 ): Promise<QueryBuildResult> {
   let query: FirebaseFirestore.Query = collection;
   let requiresClientFilter = false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let clientFilter: ((doc: any) => boolean) | undefined;
   let warning: string | undefined;
 

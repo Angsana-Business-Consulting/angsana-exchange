@@ -24,6 +24,7 @@ const TIMESTAMP_FIELD_HINTS = new Set([
 export interface WhereCondition {
   field: string;
   operator: WhereFilterOp | 'contains' | 'startsWith';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   value: any;
   isSpecial?: boolean;
 }
@@ -240,6 +241,7 @@ class WhereParser {
     throw new Error(`Expected condition or '(' at position ${this.current}`);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private parseValue(field: string, operator: string, valueStr: string): any {
     // Remove quotes
     if ((valueStr.startsWith('"') && valueStr.endsWith('"')) ||
@@ -247,7 +249,6 @@ class WhereParser {
       valueStr = valueStr.slice(1, -1);
     }
 
-    const lowerField = field.toLowerCase();
     const bareField = field.split('.').pop() || field;
     const lowerBareField = bareField.toLowerCase();
 
