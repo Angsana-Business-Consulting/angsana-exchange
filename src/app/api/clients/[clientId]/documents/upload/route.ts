@@ -1,7 +1,7 @@
 // =============================================================================
-// Angsana Exchange — Document Upload API Route
+// Angsana Exchange — Document Upload API Route (Dual-Write)
 // Slice 7A Step 3: File Download & Upload Streaming Routes
-// Updated for Shared Drive support (Slice 7A Step 2/3 Revision)
+// Slice 7A Step 4, Step 10: Dual write — Drive + Firestore registry
 //
 // POST /api/clients/{clientId}/documents/upload
 //
@@ -9,15 +9,28 @@
 // folder within the client's Google Drive tree. Files are buffered in memory
 // (up to 50MB limit) — acceptable for Cloud Run 512Mi.
 //
-// Supports both Shared Drives (driveId) and legacy regular folders (driveFolderId).
+// Dual-write behaviour (Step 4):
+//   - After successful Drive upload, creates a DocumentRegistryEntry in
+//     Firestore at tenants/{tenantId}/clients/{clientId}/documents/{docId}
+//   - Uses the client's folderMap to resolve folderCategory + visibility
+//   - Falls back gracefully if no folderMap exists (legacy clients)
 //
-// Access: internal-admin and internal-user only for this step.
+// Auto-action for client-approver uploads:
+//   - If the uploader is a client-approver, creates an action for internal
+//     review: "Review uploaded document: {filename}"
+//
+// Access: internal-admin, internal-user, and client-approver.
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { uploadToDrive } from '@/lib/drive/upload';
 import { isFolderWithinRoot } from '@/lib/drive/browse';
+import { getUserFromHeaders, hasClientAccess, isInternal, isClientApprover } from '@/lib/api/middleware/user-context';
+import { lookupFolderCategory } from '@/lib/drive/visibility';
+import { getDocumentFolderTemplate } from '@/lib/drive/folder-template-loader';
+import type { FolderMap, FolderVisibility, DocumentFolderItem } from '@/types';
 
 export const runtime = 'nodejs';
 
@@ -26,25 +39,16 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function getUserFromHeaders(request: NextRequest) {
-  return {
-    uid: request.headers.get('x-user-uid') || '',
-    role: request.headers.get('x-user-role') || '',
-    tenantId: request.headers.get('x-user-tenant') || 'angsana',
-    email: request.headers.get('x-user-email') || '',
-    clientId: request.headers.get('x-user-client') || null,
-    assignedClients: JSON.parse(request.headers.get('x-assigned-clients') || '[]') as string[],
-  };
-}
-
-function hasClientAccess(user: ReturnType<typeof getUserFromHeaders>, clientId: string): boolean {
-  if (user.clientId) return user.clientId === clientId;
-  if (user.assignedClients?.includes('*')) return true;
-  return user.assignedClients?.includes(clientId) ?? false;
-}
-
-function isInternal(role: string): boolean {
-  return role === 'internal-admin' || role === 'internal-user';
+/**
+ * Resolve the visibility for a folder using the managed list template.
+ * Falls back to 'internal-only' if the category is unknown (safety default).
+ */
+function resolveVisibility(
+  folderCategory: string,
+  folderTemplate: DocumentFolderItem[]
+): FolderVisibility {
+  const match = folderTemplate.find((f) => f.folderCategory === folderCategory);
+  return match?.visibility || 'internal-only';
 }
 
 // ─── Route Handler ────────────────────────────────────────────────────────────
@@ -55,8 +59,9 @@ function isInternal(role: string): boolean {
  * Accepts multipart form data with:
  *   - file: the file to upload
  *   - folderId: the Drive folder ID to upload into (must be in client's tree)
+ *   - campaignRef (optional): related campaign ID
  *
- * Returns the created file's metadata from Drive.
+ * Returns the created file's metadata from Drive + Firestore registry entry.
  */
 export async function POST(
   request: NextRequest,
@@ -65,10 +70,11 @@ export async function POST(
   const { clientId } = await params;
   const user = getUserFromHeaders(request);
 
-  // ── Auth: internal roles only for this step ─────────────────────────────
-  if (!isInternal(user.role)) {
+  // ── Auth: internal roles + client-approver can upload ───────────────────
+  const canUpload = isInternal(user.role) || isClientApprover(user.role);
+  if (!canUpload) {
     return NextResponse.json(
-      { error: 'Forbidden: only internal users can upload documents in this step', code: 'FORBIDDEN' },
+      { error: 'Forbidden: only internal users and client-approvers can upload documents', code: 'FORBIDDEN' },
       { status: 403 }
     );
   }
@@ -93,6 +99,7 @@ export async function POST(
 
   const file = formData.get('file') as File | null;
   const folderId = formData.get('folderId') as string | null;
+  const campaignRef = (formData.get('campaignRef') as string | null) || null;
 
   if (!file || !(file instanceof File) || file.size === 0) {
     return NextResponse.json(
@@ -120,12 +127,13 @@ export async function POST(
   }
 
   // ── Read client config to get driveId or driveFolderId ──────────────────
-  const configDoc = await adminDb
+  const configRef = adminDb
     .collection('tenants')
     .doc(user.tenantId)
     .collection('clients')
-    .doc(clientId)
-    .get();
+    .doc(clientId);
+
+  const configDoc = await configRef.get();
 
   if (!configDoc.exists) {
     return NextResponse.json(
@@ -140,6 +148,7 @@ export async function POST(
   const driveId = configData.driveId as string | undefined;
   const rootId = (driveId || configData.driveFolderId) as string | undefined;
   const isSharedDrive = !!driveId;
+  const folderMap = (configData.folderMap || null) as FolderMap | null;
 
   if (!rootId) {
     return NextResponse.json(
@@ -173,34 +182,150 @@ export async function POST(
   }
 
   // ── Upload file to Drive ────────────────────────────────────────────────
+  let driveResult;
   try {
     // Buffer the file content (acceptable for ≤50MB on 512Mi Cloud Run)
     const buffer = Buffer.from(await file.arrayBuffer());
     const mimeType = file.type || 'application/octet-stream';
 
-    const result = await uploadToDrive(file.name, mimeType, buffer, folderId, isSharedDrive);
-
-    return NextResponse.json(
-      {
-        success: true,
-        data: {
-          id: result.id,
-          name: result.name,
-          mimeType: result.mimeType,
-          size: result.size,
-          folderId,
-          createdTime: result.createdTime,
-        },
-      },
-      { status: 201 }
-    );
+    driveResult = await uploadToDrive(file.name, mimeType, buffer, folderId, isSharedDrive);
   } catch (err) {
     const driveError = err as { code?: number; message?: string };
-
     console.error('[documents/upload] Drive API error:', driveError.message);
     return NextResponse.json(
       { error: 'Failed to upload file to Google Drive', code: 'DRIVE_API_ERROR' },
       { status: 500 }
     );
   }
+
+  // ── Dual-write: create Firestore registry entry ─────────────────────────
+  let registryEntry = null;
+
+  if (folderMap) {
+    // Resolve folderCategory from the folderMap
+    const folderInfo = lookupFolderCategory(folderId, folderMap);
+
+    if (folderInfo) {
+      // Load the template to resolve visibility
+      let visibility: FolderVisibility = 'internal-only';
+      try {
+        const template = await getDocumentFolderTemplate(user.tenantId);
+        visibility = resolveVisibility(folderInfo.folderCategory, template);
+      } catch (err) {
+        console.warn('[documents/upload] Could not load folder template for visibility resolution, defaulting to internal-only:', err);
+      }
+
+      const now = new Date().toISOString();
+      const registryData = {
+        driveFileId: driveResult.id,
+        name: driveResult.name,
+        mimeType: driveResult.mimeType,
+        size: driveResult.size,
+        folderCategory: folderInfo.folderCategory,
+        folderId,
+        visibility,
+        status: 'active',
+        campaignRef: campaignRef || null,
+        registrySource: 'exchange_upload',
+        uploadedBy: user.uid,
+        uploadedAt: now,
+        lastModifiedAt: now,
+        lastModifiedBy: user.uid,
+        deletedAt: null,
+        deletedBy: null,
+        storageBackend: 'gdrive',
+      };
+
+      try {
+        const docRef = await adminDb
+          .collection('tenants')
+          .doc(user.tenantId)
+          .collection('clients')
+          .doc(clientId)
+          .collection('documents')
+          .add(registryData);
+
+        registryEntry = {
+          documentId: docRef.id,
+          ...registryData,
+        };
+
+        console.log(`[documents/upload] Registry entry created: ${docRef.id} for Drive file ${driveResult.id}`);
+      } catch (err) {
+        // Registry write failed — Drive upload succeeded. Log but don't fail the request.
+        // The file can be registered later via the /register endpoint.
+        console.error('[documents/upload] Firestore registry write failed (Drive upload succeeded):', err);
+      }
+    } else {
+      // Folder not in the folderMap — might be a container folder or custom folder
+      console.warn(
+        `[documents/upload] Folder ${folderId} not found in folderMap — ` +
+        `skipping registry write. File can be registered via /register endpoint.`
+      );
+    }
+  } else {
+    console.log('[documents/upload] No folderMap on client config — skipping registry write (legacy client)');
+  }
+
+  // ── Auto-action for client-approver uploads ─────────────────────────────
+  let autoActionId: string | null = null;
+
+  if (isClientApprover(user.role) && registryEntry) {
+    try {
+      const actionData = {
+        title: `Review uploaded document: ${driveResult.name}`,
+        description: `${user.email} uploaded "${driveResult.name}" to ${registryEntry.folderCategory}. Please review.`,
+        assignedTo: '',
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
+        status: 'open',
+        priority: 'medium',
+        source: { type: 'document_upload', ref: registryEntry.documentId },
+        relatedCampaign: campaignRef || '',
+        createdBy: user.email,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+
+      const actionRef = await adminDb
+        .collection('tenants')
+        .doc(user.tenantId)
+        .collection('clients')
+        .doc(clientId)
+        .collection('actions')
+        .add(actionData);
+
+      autoActionId = actionRef.id;
+      console.log(`[documents/upload] Auto-action created: ${actionRef.id} for client-approver upload`);
+    } catch (err) {
+      // Auto-action creation failed — not critical, log and continue
+      console.error('[documents/upload] Auto-action creation failed:', err);
+    }
+  }
+
+  // ── Success response ────────────────────────────────────────────────────
+  return NextResponse.json(
+    {
+      success: true,
+      data: {
+        id: driveResult.id,
+        name: driveResult.name,
+        mimeType: driveResult.mimeType,
+        size: driveResult.size,
+        folderId,
+        createdTime: driveResult.createdTime,
+        // Registry data (null if no folderMap or write failed)
+        registry: registryEntry
+          ? {
+              documentId: registryEntry.documentId,
+              folderCategory: registryEntry.folderCategory,
+              visibility: registryEntry.visibility,
+              registrySource: registryEntry.registrySource,
+            }
+          : null,
+        // Auto-action (null if not applicable or creation failed)
+        autoActionId,
+      },
+    },
+    { status: 201 }
+  );
 }

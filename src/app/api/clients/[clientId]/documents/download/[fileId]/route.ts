@@ -1,7 +1,7 @@
 // =============================================================================
 // Angsana Exchange — Document Download API Route
 // Slice 7A Step 3: File Download & Upload Streaming Routes
-// Updated for Shared Drive support (Slice 7A Step 2/3 Revision)
+// Slice 7A Step 4, Step 16: Registry status guard for managed clients
 //
 // GET /api/clients/{clientId}/documents/download/{fileId}
 //
@@ -11,7 +11,15 @@
 //
 // Supports both Shared Drives (driveId) and legacy regular folders (driveFolderId).
 //
-// Access: internal-admin and internal-user only for this step.
+// Registry guard (Step 4):
+//   For managed clients (those with a folderMap), the download route checks
+//   the Firestore document registry for the file's status:
+//   - If the file is registered and status='deleted', the download is blocked
+//   - If the file is registered and status='active', download proceeds
+//   - If the file is NOT registered (unregistered Drive file), download proceeds
+//     (to avoid breaking access to files not yet imported into the registry)
+//
+// Access: internal-admin, internal-user, and client-approver (with visibility check).
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -19,31 +27,12 @@ import { Readable } from 'stream';
 import { adminDb } from '@/lib/firebase/admin';
 import { downloadDriveFile } from '@/lib/drive/download';
 import { isFileWithinRoot } from '@/lib/drive/browse';
+import { getUserFromHeaders, hasClientAccess, isInternal, isClientApprover } from '@/lib/api/middleware/user-context';
+import type { FolderMap } from '@/types';
 
 export const runtime = 'nodejs';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function getUserFromHeaders(request: NextRequest) {
-  return {
-    uid: request.headers.get('x-user-uid') || '',
-    role: request.headers.get('x-user-role') || '',
-    tenantId: request.headers.get('x-user-tenant') || 'angsana',
-    email: request.headers.get('x-user-email') || '',
-    clientId: request.headers.get('x-user-client') || null,
-    assignedClients: JSON.parse(request.headers.get('x-assigned-clients') || '[]') as string[],
-  };
-}
-
-function hasClientAccess(user: ReturnType<typeof getUserFromHeaders>, clientId: string): boolean {
-  if (user.clientId) return user.clientId === clientId;
-  if (user.assignedClients?.includes('*')) return true;
-  return user.assignedClients?.includes(clientId) ?? false;
-}
-
-function isInternal(role: string): boolean {
-  return role === 'internal-admin' || role === 'internal-user';
-}
 
 /**
  * Sanitise a filename for use in Content-Disposition header.
@@ -84,10 +73,11 @@ export async function GET(
   const { clientId, fileId } = await params;
   const user = getUserFromHeaders(request);
 
-  // ── Auth: internal roles only for this step ─────────────────────────────
-  if (!isInternal(user.role)) {
+  // ── Auth: internal roles + client-approver can download ─────────────────
+  const canDownload = isInternal(user.role) || isClientApprover(user.role);
+  if (!canDownload) {
     return NextResponse.json(
-      { error: 'Forbidden: only internal users can download documents in this step', code: 'FORBIDDEN' },
+      { error: 'Forbidden: insufficient permissions to download documents', code: 'FORBIDDEN' },
       { status: 403 }
     );
   }
@@ -120,6 +110,8 @@ export async function GET(
   const driveId = configData.driveId as string | undefined;
   const rootId = (driveId || configData.driveFolderId) as string | undefined;
   const isSharedDrive = !!driveId;
+  const folderMap = (configData.folderMap || null) as FolderMap | null;
+  const isManagedClient = !!folderMap && Object.keys(folderMap).length > 0;
 
   if (!rootId) {
     return NextResponse.json(
@@ -128,10 +120,55 @@ export async function GET(
     );
   }
 
+  // ── Registry guard: check document status for managed clients ───────────
+  if (isManagedClient) {
+    try {
+      // Look up by driveFileId — the fileId in the URL IS the Drive file ID
+      const registrySnapshot = await adminDb
+        .collection('tenants')
+        .doc(user.tenantId)
+        .collection('clients')
+        .doc(clientId)
+        .collection('documents')
+        .where('driveFileId', '==', fileId)
+        .limit(1)
+        .get();
+
+      if (!registrySnapshot.empty) {
+        const registryDoc = registrySnapshot.docs[0];
+        const registryData = registryDoc.data();
+
+        // Block download of soft-deleted documents
+        if (registryData.status === 'deleted') {
+          return NextResponse.json(
+            {
+              error: 'This document has been deleted',
+              code: 'DOCUMENT_DELETED',
+              deletedAt: registryData.deletedAt,
+              deletedBy: registryData.deletedBy,
+            },
+            { status: 410 } // 410 Gone
+          );
+        }
+
+        // Client-approver visibility check: ensure the document's visibility
+        // allows client access
+        if (isClientApprover(user.role) && registryData.visibility === 'internal-only') {
+          return NextResponse.json(
+            { error: 'Forbidden: this document is internal-only', code: 'FORBIDDEN' },
+            { status: 403 }
+          );
+        }
+      }
+      // If file is NOT in registry (unregistered), allow download to proceed.
+      // This avoids breaking access for files uploaded outside Exchange.
+    } catch (err) {
+      // Registry check failed — log but don't block the download
+      console.warn('[documents/download] Registry status check failed (proceeding with download):', err);
+    }
+  }
+
   // ── Verify file belongs to client's Drive tree ──────────────────────────
-  // Top-down BFS: walk the folder tree from the root and look for the fileId.
-  // Same approach as isFolderWithinRoot — works with inherited sharing where
-  // files.get doesn't return the `parents` field.
   try {
     const fileInTree = await isFileWithinRoot(fileId, rootId, isSharedDrive);
     if (!fileInTree) {

@@ -1,6 +1,7 @@
 // =============================================================================
 // Angsana Exchange — Shared Drive Provisioning (State Machine)
 // Slice 7A Step 2/3 Revision: Shared Drive Model
+// Slice 7A Step 4: Reads folder template from Firestore managed list
 //
 // State machine with early persistence and retry:
 //
@@ -10,16 +11,13 @@
 //   State D — Create folder tree with retry (handles propagation delay)
 //   State E — Recovery: resume folder creation if driveId exists but folders pending
 //
-// The folder structure is driven by CANONICAL_FOLDER_TEMPLATE — the function
-// does not hard-code any folder names.
+// The folder structure is driven by the Document Folders managed list in
+// Firestore (tenants/{tenantId}/managedLists/documentFolders).
 // =============================================================================
 
 import { getDriveClientAsSA, getDriveClientWithImpersonation, getSAEmail } from './client';
 import { DRIVE_FOLDER_MIME_TYPE } from './types';
-import {
-  CANONICAL_FOLDER_TEMPLATE,
-  type FolderTemplateEntry,
-} from './folder-template';
+import type { DocumentFolderItem, FolderMapEntry } from '@/types';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -48,9 +46,10 @@ export interface SharedDriveCreationResult {
   sharedDriveName: string;
 }
 
-/** Result of State D: folder tree created. */
+/** Result of State D: folder tree created, folderMap built. */
 export interface FolderCreationResult {
   folders: ProvisionedFolder[];
+  folderMap: Record<string, FolderMapEntry>;
 }
 
 /** Full provisioning result (all states complete). */
@@ -134,26 +133,74 @@ async function createFolderWithRetry(
 }
 
 /**
- * Recursively create folders from a template entry and its children.
+ * Create folders from a flat DocumentFolderItem[] list, respecting parent/child
+ * relationships via parentCategory. Builds both the ProvisionedFolder[] list
+ * and the folderMap (keyed by Drive folder ID).
+ *
+ * Container folders (isContainer: true) are created in Drive for structure but
+ * are NOT included in the folderMap (files cannot be placed in containers).
  */
-async function createFoldersFromTemplate(
-  entries: FolderTemplateEntry[],
-  parentId: string,
-  results: ProvisionedFolder[]
+async function createFoldersFromManagedList(
+  items: DocumentFolderItem[],
+  sharedDriveId: string,
+  results: ProvisionedFolder[],
+  folderMap: Record<string, FolderMapEntry>
 ): Promise<void> {
-  for (const entry of entries) {
-    const folderId = await createFolderWithRetry(entry.name, parentId);
+  // Map folderCategory → created Drive folder ID (for parent lookups)
+  const categoryToFolderId: Record<string, string> = {};
+
+  // Process root-level folders first, then children
+  const rootItems = items.filter((i) => !i.parentCategory);
+  const childItems = items.filter((i) => i.parentCategory);
+
+  // Create root-level folders
+  for (const item of rootItems) {
+    const folderId = await createFolderWithRetry(item.name, sharedDriveId);
+    categoryToFolderId[item.folderCategory] = folderId;
 
     results.push({
-      name: entry.name,
+      name: item.name,
       folderId,
-      parentId,
-      visibility: entry.visibility,
+      parentId: sharedDriveId,
+      visibility: item.isContainer ? 'client-visible' : item.visibility,
     });
 
-    // Recurse into children (e.g., Scripts → Client Approved, Internal Working)
-    if (entry.children && entry.children.length > 0) {
-      await createFoldersFromTemplate(entry.children, folderId, results);
+    // Only non-container folders go in the folderMap
+    if (!item.isContainer) {
+      folderMap[folderId] = {
+        folderCategory: item.folderCategory,
+        name: item.name,
+      };
+    }
+  }
+
+  // Create child folders (e.g., Scripts → Client Approved, Internal Working)
+  for (const item of childItems) {
+    const parentFolderId = categoryToFolderId[item.parentCategory!];
+    if (!parentFolderId) {
+      console.error(
+        `[drive/provision] Cannot create folder "${item.name}" — ` +
+        `parent category "${item.parentCategory}" not found. Skipping.`
+      );
+      continue;
+    }
+
+    const folderId = await createFolderWithRetry(item.name, parentFolderId);
+    categoryToFolderId[item.folderCategory] = folderId;
+
+    results.push({
+      name: item.name,
+      folderId,
+      parentId: parentFolderId,
+      visibility: item.isContainer ? 'client-visible' : item.visibility,
+    });
+
+    // Only non-container folders go in the folderMap
+    if (!item.isContainer) {
+      folderMap[folderId] = {
+        folderCategory: item.folderCategory,
+        name: item.name,
+      };
     }
   }
 }
@@ -221,10 +268,12 @@ export async function createSharedDrive(
  * The SA must already be a Content Manager on the Shared Drive.
  *
  * @param sharedDriveId - The Shared Drive to create folders in
- * @returns FolderCreationResult with all created folders
+ * @param folderTemplate - Active folder items from the Document Folders managed list
+ * @returns FolderCreationResult with all created folders and folderMap
  */
 export async function createFolderTree(
-  sharedDriveId: string
+  sharedDriveId: string,
+  folderTemplate: DocumentFolderItem[]
 ): Promise<FolderCreationResult> {
   console.log(`[drive/provision] State D: Creating folder tree in drive ${sharedDriveId}...`);
 
@@ -266,9 +315,13 @@ export async function createFolderTree(
   }
 
   const folders: ProvisionedFolder[] = [];
-  await createFoldersFromTemplate(CANONICAL_FOLDER_TEMPLATE, sharedDriveId, folders);
+  const folderMap: Record<string, FolderMapEntry> = {};
+  await createFoldersFromManagedList(folderTemplate, sharedDriveId, folders, folderMap);
 
-  console.log(`[drive/provision] State D complete: ${folders.length} folders created`);
+  console.log(
+    `[drive/provision] State D complete: ${folders.length} folders created, ` +
+    `${Object.keys(folderMap).length} entries in folderMap`
+  );
 
-  return { folders };
+  return { folders, folderMap };
 }

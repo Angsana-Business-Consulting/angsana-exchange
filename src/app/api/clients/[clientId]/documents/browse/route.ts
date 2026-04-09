@@ -1,54 +1,74 @@
 // =============================================================================
-// Angsana Exchange — Document Browse API Route
+// Angsana Exchange — Document Browse API Route (Firestore-First)
 // Slice 7A: Google Drive API Connectivity & Browse Endpoint
-// Updated for Shared Drive support (Slice 7A Step 2/3 Revision)
+// Slice 7A Step 4, Step 11: Firestore-first reads with role-based visibility
 //
-// GET /api/clients/{clientId}/documents/browse[?folderId={subfolderId}]
+// GET /api/clients/{clientId}/documents/browse[?folderId={subfolderId}&source=drive]
 //
-// Lists the contents of a client's Google Drive folder. Supports both
-// Shared Drives (driveId) and legacy regular folders (driveFolderId).
+// Behaviour depends on whether the client has a folderMap (managed client):
 //
-// Internal roles only for this step. Client roles return 403 (opened in a
-// later step with visibility filtering).
+//   A. Managed client (has folderMap):
+//      - Default: reads from Firestore document registry, grouped by folderCategory
+//      - Applies role-based visibility filtering:
+//        * Internal users: see all categories
+//        * Client-approver / client-viewer: see only "client-visible" categories
+//      - Optional ?folderId=X&source=drive: falls back to Drive API for raw listing
+//      - Includes hasUnregisteredContent flag when Drive files don't match registry
+//
+//   B. Legacy client (no folderMap):
+//      - Falls back to Drive API listing (same as Step 1 behaviour)
+//      - Internal-only access enforced
+//
+// Access: All authenticated roles with client access.
+// Internal users see everything. Client users see client-visible folders only.
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { listFolderContents, isFolderWithinRoot } from '@/lib/drive/browse';
+import { getUserFromHeaders, hasClientAccess, isInternal } from '@/lib/api/middleware/user-context';
+import { getClientVisibleCategories } from '@/lib/drive/visibility';
+import { getDocumentFolderTemplate } from '@/lib/drive/folder-template-loader';
+import type { FolderMap, DocumentFolderItem } from '@/types';
 
-/**
- * Extract user claims from request headers (set by middleware).
- * Same pattern used across all /api/clients/{clientId}/* routes.
- */
-function getUserFromHeaders(request: NextRequest) {
-  return {
-    uid: request.headers.get('x-user-uid') || '',
-    role: request.headers.get('x-user-role') || '',
-    tenantId: request.headers.get('x-user-tenant') || 'angsana',
-    email: request.headers.get('x-user-email') || '',
-    clientId: request.headers.get('x-user-client') || null,
-    assignedClients: JSON.parse(request.headers.get('x-assigned-clients') || '[]') as string[],
-  };
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+/** A document entry from the Firestore registry, shaped for the browse response. */
+interface BrowseRegistryItem {
+  documentId: string;
+  driveFileId: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  folderCategory: string;
+  visibility: string;
+  uploadedBy: string;
+  uploadedAt: string;
+  campaignRef: string | null;
+  status: string;
 }
 
-function hasClientAccess(user: ReturnType<typeof getUserFromHeaders>, clientId: string): boolean {
-  if (user.clientId) return user.clientId === clientId;
-  if (user.assignedClients?.includes('*')) return true;
-  return user.assignedClients?.includes(clientId) ?? false;
+/** A folder grouping in the Firestore-first browse response. */
+interface BrowseFolderGroup {
+  folderCategory: string;
+  folderName: string;
+  folderId: string | null;
+  visibility: string;
+  files: BrowseRegistryItem[];
 }
 
-function isInternal(role: string): boolean {
-  return role === 'internal-admin' || role === 'internal-user';
-}
+// ─── Route Handler ────────────────────────────────────────────────────────────
 
 /**
  * GET /api/clients/{clientId}/documents/browse
  *
  * Query params:
- *   folderId (optional) — browse a specific subfolder instead of root
+ *   folderId (optional) — browse a specific subfolder (Drive mode)
+ *   source (optional) — "drive" forces Drive API listing even for managed clients
+ *   folderCategory (optional) — filter Firestore results to a single category
  *
- * Returns the folder contents as a structured array. No Drive URLs are
- * exposed in the response (Exchange wraps Drive completely).
+ * Returns folder contents, either from Firestore registry (managed) or
+ * Drive API (legacy / explicit drive mode).
  */
 export async function GET(
   request: NextRequest,
@@ -56,14 +76,6 @@ export async function GET(
 ) {
   const { clientId } = await params;
   const user = getUserFromHeaders(request);
-
-  // ── Auth: internal roles only for this step ─────────────────────────────
-  if (!isInternal(user.role)) {
-    return NextResponse.json(
-      { error: 'Forbidden: only internal users can browse documents in this step', code: 'FORBIDDEN' },
-      { status: 403 }
-    );
-  }
 
   // ── Client access check ─────────────────────────────────────────────────
   if (!hasClientAccess(user, clientId)) {
@@ -73,7 +85,13 @@ export async function GET(
     );
   }
 
-  // ── Read client config to get driveId or driveFolderId ──────────────────
+  // ── Parse query params ──────────────────────────────────────────────────
+  const { searchParams } = new URL(request.url);
+  const requestedFolderId = searchParams.get('folderId');
+  const source = searchParams.get('source');
+  const filterCategory = searchParams.get('folderCategory');
+
+  // ── Read client config ──────────────────────────────────────────────────
   const configDoc = await adminDb
     .collection('tenants')
     .doc(user.tenantId)
@@ -94,6 +112,8 @@ export async function GET(
   const driveId = configData.driveId as string | undefined;
   const driveFolderId = configData.driveFolderId as string | undefined;
   const rootId = driveId || driveFolderId;
+  const folderMap = (configData.folderMap || null) as FolderMap | null;
+  const isManagedClient = !!folderMap && Object.keys(folderMap).length > 0;
 
   if (!rootId) {
     return NextResponse.json(
@@ -102,64 +122,233 @@ export async function GET(
     );
   }
 
-  // ── Determine target folder ─────────────────────────────────────────────
-  const { searchParams } = new URL(request.url);
-  const requestedFolderId = searchParams.get('folderId');
-  const targetFolderId = requestedFolderId || rootId;
+  // ── Decision: Firestore-first or Drive fallback ─────────────────────────
 
-  // ── Subfolder security: verify folder is within client's tree ───────────
-  if (requestedFolderId && requestedFolderId !== rootId) {
-    try {
-      const isValid = await isFolderWithinRoot(requestedFolderId, rootId, !!driveId);
-      if (!isValid) {
+  // Force Drive mode: explicit source=drive, or subfolder navigation, or legacy client
+  const useDriveMode = source === 'drive' || !!requestedFolderId || !isManagedClient;
+
+  if (useDriveMode) {
+    // ── Drive API mode (legacy or explicit) ─────────────────────────────
+    // Legacy clients: internal-only. Managed clients with source=drive: any role with access.
+    if (!isManagedClient && !isInternal(user.role)) {
+      return NextResponse.json(
+        { error: 'Forbidden: only internal users can browse unmanaged client documents', code: 'FORBIDDEN' },
+        { status: 403 }
+      );
+    }
+
+    const targetFolderId = requestedFolderId || rootId;
+
+    // Subfolder security: verify folder is within client's tree
+    if (requestedFolderId && requestedFolderId !== rootId) {
+      try {
+        const isValid = await isFolderWithinRoot(requestedFolderId, rootId, !!driveId);
+        if (!isValid) {
+          return NextResponse.json(
+            { error: 'Forbidden: folder is not within this client\'s Drive folder', code: 'FORBIDDEN' },
+            { status: 403 }
+          );
+        }
+      } catch (err) {
+        const driveError = err as { code?: number; message?: string };
+        if (driveError.code === 404) {
+          return NextResponse.json(
+            { error: 'Folder not found or access denied', code: 'FOLDER_NOT_FOUND' },
+            { status: 404 }
+          );
+        }
+        console.error('[documents/browse] Parent-chain validation error:', driveError.message);
         return NextResponse.json(
-          { error: 'Forbidden: folder is not within this client\'s Drive folder', code: 'FORBIDDEN' },
-          { status: 403 }
+          { error: 'Drive API error during folder validation', code: 'DRIVE_API_ERROR' },
+          { status: 500 }
         );
       }
+    }
+
+    // List folder contents from Drive
+    try {
+      const items = await listFolderContents(targetFolderId, driveId || undefined);
+
+      return NextResponse.json({
+        success: true,
+        mode: 'drive',
+        data: {
+          folderId: targetFolderId,
+          items,
+          count: items.length,
+        },
+      });
     } catch (err) {
-      // If the folder doesn't exist or SA can't access it, treat as not found
       const driveError = err as { code?: number; message?: string };
       if (driveError.code === 404) {
         return NextResponse.json(
-          { error: 'Folder not found or access denied', code: 'FOLDER_NOT_FOUND' },
+          { error: 'Drive folder not found — folder may have been deleted or SA lost access', code: 'FOLDER_NOT_FOUND' },
           { status: 404 }
         );
       }
-      console.error('[documents/browse] Parent-chain validation error:', driveError.message);
+      console.error('[documents/browse] Drive API error:', driveError.message);
       return NextResponse.json(
-        { error: 'Drive API error during folder validation', code: 'DRIVE_API_ERROR' },
+        { error: 'Failed to list folder contents from Google Drive', code: 'DRIVE_API_ERROR' },
         { status: 500 }
       );
     }
   }
 
-  // ── List folder contents ────────────────────────────────────────────────
+  // ── Firestore-first mode (managed client, no subfolder navigation) ──────
+
+  // Load the document folder template for visibility resolution
+  let folderTemplate: DocumentFolderItem[];
   try {
-    // Pass sharedDriveId only when using the new Shared Drive model
-    const items = await listFolderContents(targetFolderId, driveId || undefined);
+    folderTemplate = await getDocumentFolderTemplate(user.tenantId);
+  } catch (err) {
+    console.error('[documents/browse] Failed to load folder template:', err);
+    return NextResponse.json(
+      { error: 'Failed to load folder template', code: 'TEMPLATE_LOAD_ERROR' },
+      { status: 500 }
+    );
+  }
+
+  // Determine which categories this user can see
+  const isInternalUser = isInternal(user.role);
+  const visibleCategories = isInternalUser
+    ? folderTemplate.filter((f) => !f.isContainer && f.active).map((f) => f.folderCategory)
+    : getClientVisibleCategories(folderTemplate);
+
+  // Apply optional folderCategory filter
+  const targetCategories = filterCategory
+    ? visibleCategories.filter((c) => c === filterCategory)
+    : visibleCategories;
+
+  if (filterCategory && targetCategories.length === 0) {
+    return NextResponse.json(
+      { error: `Folder category "${filterCategory}" is not accessible`, code: 'CATEGORY_NOT_FOUND' },
+      { status: 404 }
+    );
+  }
+
+  // ── Query Firestore document registry ───────────────────────────────────
+  try {
+    const documentsRef = adminDb
+      .collection('tenants')
+      .doc(user.tenantId)
+      .collection('clients')
+      .doc(clientId)
+      .collection('documents');
+
+    // Query for active documents in visible categories
+    // Firestore `in` operator supports up to 30 values — our template has ~9
+    const snapshot = await documentsRef
+      .where('status', '==', 'active')
+      .where('folderCategory', 'in', targetCategories.length > 0 ? targetCategories : ['__none__'])
+      .orderBy('uploadedAt', 'desc')
+      .get();
+
+    // Build category-keyed map of folder groups using the folderMap
+    const categoryToFolderId = new Map<string, string>();
+    if (folderMap) {
+      for (const [fId, entry] of Object.entries(folderMap)) {
+        categoryToFolderId.set(entry.folderCategory, fId);
+      }
+    }
+
+    // Group documents by folderCategory
+    const groups = new Map<string, BrowseFolderGroup>();
+
+    // Pre-populate groups for all visible categories (so empty folders still appear)
+    for (const category of targetCategories) {
+      const templateItem = folderTemplate.find((f) => f.folderCategory === category);
+      if (templateItem) {
+        groups.set(category, {
+          folderCategory: category,
+          folderName: templateItem.name,
+          folderId: categoryToFolderId.get(category) || null,
+          visibility: templateItem.visibility,
+          files: [],
+        });
+      }
+    }
+
+    // Populate files into their category groups
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+      const category = data.folderCategory as string;
+      const group = groups.get(category);
+      if (group) {
+        group.files.push({
+          documentId: doc.id,
+          driveFileId: data.driveFileId,
+          name: data.name,
+          mimeType: data.mimeType,
+          size: data.size,
+          folderCategory: category,
+          visibility: data.visibility,
+          uploadedBy: data.uploadedBy,
+          uploadedAt: data.uploadedAt,
+          campaignRef: data.campaignRef || null,
+          status: data.status,
+        });
+      }
+    }
+
+    // Sort groups by template sortOrder
+    const sortedGroups = Array.from(groups.values()).sort((a, b) => {
+      const aOrder = folderTemplate.find((f) => f.folderCategory === a.folderCategory)?.sortOrder || 99;
+      const bOrder = folderTemplate.find((f) => f.folderCategory === b.folderCategory)?.sortOrder || 99;
+      return aOrder - bOrder;
+    });
+
+    // ── Check for unregistered Drive content ────────────────────────────
+    // Compare registered driveFileIds against Drive listing to flag drift.
+    // Only for internal users (lightweight check, not per-request for clients).
+    let hasUnregisteredContent = false;
+
+    if (isInternalUser && driveId) {
+      try {
+        // Get all registered driveFileIds for this client
+        const registeredFileIds = new Set(
+          snapshot.docs.map((d) => d.data().driveFileId as string)
+        );
+
+        // Quick check: list root-level items from Drive, check if any files are missing
+        const driveItems = await listFolderContents(driveId, driveId);
+        // Only check folders that are in the folderMap
+        for (const item of driveItems) {
+          if (item.isFolder && folderMap && folderMap[item.id]) {
+            // List files in this folder
+            const folderFiles = await listFolderContents(item.id, driveId);
+            for (const file of folderFiles) {
+              if (!file.isFolder && !registeredFileIds.has(file.id)) {
+                hasUnregisteredContent = true;
+                break;
+              }
+            }
+            if (hasUnregisteredContent) break;
+          }
+        }
+      } catch (err) {
+        // Non-critical — just log and skip the check
+        console.warn('[documents/browse] Unregistered content check failed:', err);
+      }
+    }
+
+    const totalFiles = sortedGroups.reduce((sum, g) => sum + g.files.length, 0);
 
     return NextResponse.json({
       success: true,
+      mode: 'firestore',
       data: {
-        folderId: targetFolderId,
-        items,
-        count: items.length,
+        folders: sortedGroups,
+        totalFiles,
+        totalFolders: sortedGroups.length,
+        hasUnregisteredContent,
+        visibilityFilter: isInternalUser ? 'all' : 'client-visible',
       },
     });
   } catch (err) {
-    const driveError = err as { code?: number; message?: string };
-
-    if (driveError.code === 404) {
-      return NextResponse.json(
-        { error: 'Drive folder not found — folder may have been deleted or SA lost access', code: 'FOLDER_NOT_FOUND' },
-        { status: 404 }
-      );
-    }
-
-    console.error('[documents/browse] Drive API error:', driveError.message);
+    const firestoreError = err as { message?: string; code?: number };
+    console.error('[documents/browse] Firestore query error:', firestoreError.message);
     return NextResponse.json(
-      { error: 'Failed to list folder contents from Google Drive', code: 'DRIVE_API_ERROR' },
+      { error: 'Failed to query document registry', code: 'FIRESTORE_ERROR' },
       { status: 500 }
     );
   }

@@ -45,13 +45,13 @@ This file is the markdown conversion of the original spec document. See the `.do
 - [x] Step 3: Seed script — Add documentFolders managed list to seed.ts
 - [x] Step 4: Document Folders admin tab — ManagedListsClient.tsx + page.tsx updated
 - [x] Step 5: Document Folders API route — dedicated `/api/managed-lists/document-folders` with guardrails
-- [ ] Step 8: Provisioning route update — Firestore template read, folderMap write
-- [ ] Step 9: Backfill script — scripts/backfill-folder-map.ts
-- [ ] Step 10: Upload route — dual write, registry entry, auto-action
-- [ ] Step 11: Browse route — Firestore-first, role filtering, hasUnregisteredContent
-- [ ] Step 12: Register route — POST register existing file
-- [ ] Step 13: Rename route — PATCH
-- [ ] Step 14: Soft-delete route — DELETE
-- [ ] Step 15: Campaign link route — PATCH
-- [ ] Step 16: Download route guard — registry status check
-- [ ] Step 17: Firestore indexes — 5 composite indexes
+- [x] Step 8: Provisioning route update — Firestore template read, folderMap write
+- [x] Step 9: Backfill script — scripts/backfill-folder-map.ts
+- [x] Step 10: Upload route — dual write, registry entry, auto-action
+- [x] Step 11: Browse route — Firestore-first, role filtering, hasUnregisteredContent
+- [x] Step 12: Register route — POST register existing file
+- [x] Step 13: Rename route — PATCH (Drive first, extension preservation)
+- [x] Step 14: Soft-delete route — DELETE (Drive trash first, Firestore soft-delete)
+- [x] Step 15: Campaign link route — PATCH (Firestore-only, campaign validation)
+- [x] Step 16: Download route guard — registry status check, visibility enforcement
+- [x] Step 17: Firestore indexes — 5 composite indexes for documents sub-collection

@@ -1,6 +1,7 @@
 // =============================================================================
 // Angsana Exchange — Document Folder Provisioning API Route (State Machine)
 // Slice 7A Step 2/3 Revision: Shared Drive Model
+// Slice 7A Step 4: Reads folder template from Firestore, persists folderMap
 //
 // POST /api/clients/{clientId}/documents/provision
 //
@@ -20,6 +21,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { createSharedDrive, createFolderTree } from '@/lib/drive/provision';
+import { getActiveFoldersForProvisioning } from '@/lib/drive/folder-template-loader';
 
 /**
  * Extract user claims from request headers (set by middleware).
@@ -167,16 +169,51 @@ export async function POST(
     });
   }
 
+  // ── Load folder template from Firestore managed list ────────────────────
+  let folderTemplate;
+  try {
+    folderTemplate = await getActiveFoldersForProvisioning(user.tenantId);
+  } catch (err) {
+    const templateError = err as { message?: string };
+    console.error('[documents/provision] Failed to load folder template:', templateError.message);
+    return NextResponse.json(
+      {
+        error: 'Failed to load folder template from managed list',
+        code: 'TEMPLATE_LOAD_ERROR',
+        detail: templateError.message,
+      },
+      { status: 500 }
+    );
+  }
+
   // ── State D: Create folder tree with retry ──────────────────────────────
   try {
-    const folderResult = await createFolderTree(driveId);
+    const folderResult = await createFolderTree(driveId, folderTemplate);
 
-    // ── Update Firestore: folders complete ─────────────────────────────────
-    await configRef.update({
-      folderProvisionStatus: 'complete',
-      lastProvisionAttemptAt: FieldValue.serverTimestamp(),
-      lastProvisionError: null,
-    });
+    // ── Persist folderMap + mark folders complete ──────────────────────────
+    try {
+      await configRef.update({
+        folderProvisionStatus: 'complete',
+        folderMap: folderResult.folderMap,
+        lastProvisionAttemptAt: FieldValue.serverTimestamp(),
+        lastProvisionError: null,
+      });
+    } catch (mapErr) {
+      // Folders created in Drive but folderMap write failed — set intermediate state
+      const mapError = mapErr as { message?: string };
+      console.error(
+        '[documents/provision] Folder map write failed:',
+        mapError.message
+      );
+      await configRef.update({
+        folderProvisionStatus: 'folders_created_map_pending',
+        lastProvisionAttemptAt: FieldValue.serverTimestamp(),
+        lastProvisionError: {
+          code: 'FOLDER_MAP_WRITE_ERROR',
+          message: mapError.message || 'Failed to persist folderMap to client config',
+        },
+      });
+    }
 
     return NextResponse.json(
       {
@@ -186,6 +223,7 @@ export async function POST(
           sharedDriveId: driveId,
           sharedDriveName: sharedDriveName || `${clientName} (Client)`,
           folders: folderResult.folders,
+          folderMap: folderResult.folderMap,
         },
       },
       { status: 201 }
