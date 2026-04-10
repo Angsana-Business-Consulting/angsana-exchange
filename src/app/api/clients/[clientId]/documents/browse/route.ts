@@ -92,6 +92,7 @@ export async function GET(
   const source = searchParams.get('source');
   const filterCategory = searchParams.get('folderCategory');
   const campaignFilter = searchParams.get('campaign');
+  const includeUnregisteredCheck = searchParams.get('includeUnregisteredCheck') === 'true';
 
   // ── Read client config ──────────────────────────────────────────────────
   const configDoc = await adminDb
@@ -312,7 +313,7 @@ export async function GET(
     // Only for internal users (lightweight check, not per-request for clients).
     let hasUnregisteredContent = false;
 
-    if (isInternalUser && driveId) {
+    if (isInternalUser && driveId && includeUnregisteredCheck) {
       try {
         // Get all registered driveFileIds for this client
         const registeredFileIds = new Set(

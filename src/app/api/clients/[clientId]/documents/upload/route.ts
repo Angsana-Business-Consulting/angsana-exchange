@@ -25,7 +25,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { FieldValue } from 'firebase-admin/firestore';
-import { uploadToDrive } from '@/lib/drive/upload';
+import { uploadToDrive, getGoogleConvertMimeType } from '@/lib/drive/upload';
 import { isFolderWithinRoot } from '@/lib/drive/browse';
 import { getUserFromHeaders, hasClientAccess, isInternal, isClientApprover } from '@/lib/api/middleware/user-context';
 import { lookupFolderCategory } from '@/lib/drive/visibility';
@@ -188,7 +188,17 @@ export async function POST(
     const buffer = Buffer.from(await file.arrayBuffer());
     const mimeType = file.type || 'application/octet-stream';
 
-    driveResult = await uploadToDrive(file.name, mimeType, buffer, folderId, isSharedDrive);
+    // Auto-convert Office formats to Google Workspace for internal users.
+    // Client uploads stay as-is (original format preserved for download).
+    const convertTarget = isInternal(user.role)
+      ? getGoogleConvertMimeType(mimeType) ?? undefined
+      : undefined;
+
+    if (convertTarget) {
+      console.log(`[documents/upload] Auto-converting ${mimeType} → ${convertTarget} for internal user`);
+    }
+
+    driveResult = await uploadToDrive(file.name, mimeType, buffer, folderId, isSharedDrive, convertTarget);
   } catch (err) {
     const driveError = err as { code?: number; message?: string };
     console.error('[documents/upload] Drive API error:', driveError.message);

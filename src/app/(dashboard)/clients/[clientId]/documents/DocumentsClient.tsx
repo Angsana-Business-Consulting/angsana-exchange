@@ -5,18 +5,21 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Folder,
   FileText,
+  FilePlus,
   Upload,
   MoreHorizontal,
   ExternalLink,
   Download,
   Pencil,
   Link2,
+  FolderInput,
   Trash2,
   ChevronDown,
   AlertCircle,
   X,
   Check,
   Loader2,
+  Plus,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import {
@@ -26,6 +29,7 @@ import {
   buildFolderTree,
   formatShortDate,
   getFolderDisplayName,
+  looksLikeUid,
 } from '@/lib/documents/utils';
 import type { FolderTreeNode } from '@/lib/documents/utils';
 import type { DocumentFolderItem, UserRole, Campaign } from '@/types';
@@ -142,14 +146,25 @@ function FolderTreeItem({
   fileCounts: Record<string, number>;
   campaignActive: boolean;
 }) {
-  const isSelected = selectedCategory === node.folderCategory;
+  const isContainer = node.isContainer && node.children.length > 0;
+  const [expanded, setExpanded] = useState(true); // containers start expanded
+  const isSelected = !isContainer && selectedCategory === node.folderCategory;
   const count = fileCounts[node.folderCategory] ?? 0;
   const isEmpty = count === 0 && campaignActive;
+
+  function handleClick() {
+    if (isContainer) {
+      // Container folders toggle expand/collapse — never select
+      setExpanded(!expanded);
+    } else {
+      onSelect(isSelected ? null : node.folderCategory);
+    }
+  }
 
   return (
     <>
       <button
-        onClick={() => onSelect(isSelected ? null : node.folderCategory)}
+        onClick={handleClick}
         className={`w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors
           ${isSelected
             ? 'border-l-[3px] border-l-[#3B7584] bg-[var(--surface-secondary,#F7F9FA)] font-medium'
@@ -164,6 +179,12 @@ function FolderTreeItem({
           color: isSelected ? '#1A1A1A' : isEmpty ? '#9CA3AF' : '#6B7280',
         }}
       >
+        {isContainer && (
+          <ChevronDown
+            className={`shrink-0 transition-transform ${expanded ? '' : '-rotate-90'}`}
+            style={{ width: '12px', height: '12px' }}
+          />
+        )}
         <Folder className="shrink-0" style={{ width: '14px', height: '14px' }} />
         <span className="truncate">{node.name}</span>
         {node.visibility === 'internal-only' && (
@@ -172,7 +193,7 @@ function FolderTreeItem({
           </span>
         )}
       </button>
-      {node.children.map((child) => (
+      {expanded && node.children.map((child) => (
         <FolderTreeItem
           key={child.folderCategory}
           node={child}
@@ -196,8 +217,10 @@ function FileRow({
   clientId,
   role,
   campaigns,
+  folders,
   onRename,
   onLinkCampaign,
+  onMove,
   onDelete,
   onRefresh,
 }: {
@@ -205,8 +228,10 @@ function FileRow({
   clientId: string;
   role: UserRole;
   campaigns: Pick<Campaign, 'id' | 'campaignName' | 'status'>[];
+  folders: BrowseFolder[];
   onRename: (docId: string, newName: string) => Promise<void>;
   onLinkCampaign: (docId: string, campaignId: string | null) => Promise<void>;
+  onMove: (docId: string, targetFolderId: string) => Promise<void>;
   onDelete: (docId: string, fileName: string) => Promise<void>;
   onRefresh: () => void;
 }) {
@@ -215,6 +240,7 @@ function FileRow({
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(file.name);
   const [campaignMenuOpen, setCampaignMenuOpen] = useState(false);
+  const [moveMenuOpen, setMoveMenuOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -317,7 +343,9 @@ function FileRow({
         )}
         <p className="text-xs text-gray-400 mt-0.5">
           {formatShortDate(file.uploadedAt)}
-          {file.uploadedByName && <span> by {file.uploadedByName.split('@')[0]}</span>}
+          {file.uploadedByName && !looksLikeUid(file.uploadedByName) && (
+            <span> by {file.uploadedByName.split('@')[0]}</span>
+          )}
         </p>
       </div>
 
@@ -396,6 +424,36 @@ function FileRow({
                   </div>
                 )}
 
+                <button
+                  onClick={() => { setMoveMenuOpen(!moveMenuOpen); setCampaignMenuOpen(false); }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  <FolderInput className="h-[15px] w-[15px]" /> Move to folder
+                </button>
+
+                {moveMenuOpen && (
+                  <div className="border-t border-gray-100 bg-gray-50 px-2 py-1 max-h-48 overflow-y-auto">
+                    {folders
+                      .filter((f) => f.folderId && f.folderCategory !== file.folderCategory)
+                      .map((f) => (
+                        <button
+                          key={f.folderCategory}
+                          onClick={async () => {
+                            if (f.folderId) {
+                              await onMove(file.documentId, f.folderId);
+                              setMoveMenuOpen(false);
+                              setMenuOpen(false);
+                            }
+                          }}
+                          className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-gray-600 hover:bg-white"
+                        >
+                          <Folder className="h-3 w-3 shrink-0" />
+                          {f.folderName}
+                        </button>
+                      ))}
+                  </div>
+                )}
+
                 <div className="my-1 border-t border-gray-100" />
                 {deleteConfirm ? (
                   <div className="px-3 py-2 space-y-2">
@@ -455,19 +513,37 @@ export default function DocumentsClient({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [showNewMenu, setShowNewMenu] = useState(false);
   const [showUnregistered, setShowUnregistered] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const newMenuRef = useRef<HTMLDivElement>(null);
 
+  const internal = isInternalRole(role);
   const tree = buildFolderTree(folderTemplate, role);
 
+  // Close new menu on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (newMenuRef.current && !newMenuRef.current.contains(e.target as Node)) {
+        setShowNewMenu(false);
+      }
+    }
+    if (showNewMenu) {
+      document.addEventListener('mousedown', handleClick);
+      return () => document.removeEventListener('mousedown', handleClick);
+    }
+  }, [showNewMenu]);
+
   // ── Fetch documents ─────────────────────────────────────────────────────
-  const fetchDocuments = useCallback(async (campaign: string | undefined = undefined) => {
+  const fetchDocuments = useCallback(async (campaign: string | undefined = undefined, checkUnregistered = false) => {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
       const filterCampaign = campaign !== undefined ? campaign : campaignFilter;
       if (filterCampaign) params.set('campaign', filterCampaign);
+      if (checkUnregistered) params.set('includeUnregisteredCheck', 'true');
 
       const res = await fetch(`/api/clients/${clientId}/documents/browse?${params.toString()}`);
       if (!res.ok) {
@@ -618,6 +694,78 @@ export default function DocumentsClient({
     }
   }
 
+  // ── Trigger unregistered check when internal user selects a folder ───
+  useEffect(() => {
+    if (internal && selectedCategory && !loading) {
+      // Fire a background check — don't set loading, just update hasUnregisteredContent
+      const checkUrl = `/api/clients/${clientId}/documents/browse?includeUnregisteredCheck=true` +
+        (campaignFilter ? `&campaign=${campaignFilter}` : '');
+      fetch(checkUrl)
+        .then((r) => r.json())
+        .then((json: BrowseResponse) => {
+          if (json.data) {
+            setBrowseData((prev) => prev ? { ...prev, hasUnregisteredContent: json.data.hasUnregisteredContent } : prev);
+          }
+        })
+        .catch(() => {}); // silent
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategory, internal]);
+
+  // ── Create new Google document ────────────────────────────────────────
+  async function handleCreateDocument(type: 'document' | 'spreadsheet' | 'presentation') {
+    if (!selectedFolder?.folderId) return;
+    const typeLabels = { document: 'Document', spreadsheet: 'Spreadsheet', presentation: 'Presentation' };
+    const name = prompt(`Name for new Google ${typeLabels[type]}:`);
+    if (!name || !name.trim()) return;
+
+    setCreating(true);
+    setShowNewMenu(false);
+    try {
+      const res = await fetch(`/api/clients/${clientId}/documents/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          type,
+          folderId: selectedFolder.folderId,
+          campaignRef: campaignFilter || null,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Create failed (${res.status})`);
+      }
+      const json = await res.json();
+      // Open the new file in Google editor
+      const mimeTypes: Record<string, string> = {
+        document: 'application/vnd.google-apps.document',
+        spreadsheet: 'application/vnd.google-apps.spreadsheet',
+        presentation: 'application/vnd.google-apps.presentation',
+      };
+      window.open(getGoogleEditorUrl(json.data.id, mimeTypes[type]), '_blank');
+      fetchDocuments();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Create failed');
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  // ── Move document to different folder ──────────────────────────────────
+  async function handleMoveDocument(docId: string, targetFolderId: string) {
+    const res = await fetch(`/api/clients/${clientId}/documents/${docId}/move`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetFolderId }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      alert(body.error || 'Move failed');
+    }
+    fetchDocuments();
+  }
+
   async function handleRegister(driveFileId: string, folderCat: string) {
     const res = await fetch(`/api/clients/${clientId}/documents/register`, {
       method: 'POST',
@@ -739,17 +887,55 @@ export default function DocumentsClient({
                       {selectedFolder.files.length} file{selectedFolder.files.length !== 1 ? 's' : ''}
                     </p>
                   </div>
-                  {showUpload && (
-                    <label className="cursor-pointer inline-flex items-center gap-1.5 rounded-full bg-[#3B7584] px-4 py-[7px] text-[13px] font-medium text-white hover:bg-[#2D5D6B] transition-colors">
-                      {uploading ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Upload className="h-3.5 w-3.5" />
-                      )}
-                      {uploading ? 'Uploading...' : 'Upload'}
-                      <input type="file" className="hidden" onChange={handleUpload} disabled={uploading} />
-                    </label>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {/* New document dropdown — internal only */}
+                    {internal && showUpload && (
+                      <div className="relative" ref={newMenuRef}>
+                        <button
+                          onClick={() => setShowNewMenu(!showNewMenu)}
+                          disabled={creating}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-[#3B7584] px-3.5 py-[7px] text-[13px] font-medium text-[#3B7584] hover:bg-[#3B7584]/5 transition-colors disabled:opacity-50"
+                        >
+                          {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                          New
+                        </button>
+                        {showNewMenu && (
+                          <div className="absolute right-0 top-10 z-50 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                            <button
+                              onClick={() => handleCreateDocument('document')}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                            >
+                              <FilePlus className="h-4 w-4 text-blue-600" /> Google Doc
+                            </button>
+                            <button
+                              onClick={() => handleCreateDocument('spreadsheet')}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                            >
+                              <FilePlus className="h-4 w-4 text-green-600" /> Google Sheet
+                            </button>
+                            <button
+                              onClick={() => handleCreateDocument('presentation')}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                            >
+                              <FilePlus className="h-4 w-4 text-amber-600" /> Google Slides
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {/* Upload button */}
+                    {showUpload && (
+                      <label className="cursor-pointer inline-flex items-center gap-1.5 rounded-full bg-[#3B7584] px-4 py-[7px] text-[13px] font-medium text-white hover:bg-[#2D5D6B] transition-colors">
+                        {uploading ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Upload className="h-3.5 w-3.5" />
+                        )}
+                        {uploading ? 'Uploading...' : 'Upload'}
+                        <input type="file" className="hidden" onChange={handleUpload} disabled={uploading} />
+                      </label>
+                    )}
+                  </div>
                 </div>
 
                 {/* Unregistered banner */}
@@ -782,8 +968,10 @@ export default function DocumentsClient({
                         clientId={clientId}
                         role={role}
                         campaigns={campaigns}
+                        folders={browseData?.folders || []}
                         onRename={handleRename}
                         onLinkCampaign={handleLinkCampaign}
+                        onMove={handleMoveDocument}
                         onDelete={handleDelete}
                         onRefresh={() => fetchDocuments()}
                       />

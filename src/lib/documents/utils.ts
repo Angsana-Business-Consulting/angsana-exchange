@@ -121,6 +121,16 @@ export function buildFolderTree(
   }));
 }
 
+// ─── Display Helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Detect if a string looks like a raw Firebase UID (alphanumeric, 20+ chars, no spaces or @).
+ * Used to avoid displaying raw UIDs as uploader names for legacy data.
+ */
+export function looksLikeUid(value: string): boolean {
+  return /^[A-Za-z0-9]{20,}$/.test(value);
+}
+
 // ─── Date Formatting ──────────────────────────────────────────────────────────
 
 /**

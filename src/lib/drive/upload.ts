@@ -30,6 +30,44 @@ export interface UploadResult {
   createdTime: string;
 }
 
+// ─── Google Format Conversion ─────────────────────────────────────────────────
+
+/**
+ * Maps Office/text mimeTypes to their Google Workspace equivalents.
+ * When uploading with a target Google mimeType in requestBody, Drive auto-converts.
+ */
+const GOOGLE_CONVERT_MAP: Record<string, string> = {
+  // Word → Google Docs
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'application/vnd.google-apps.document',
+  'application/msword': 'application/vnd.google-apps.document',
+  'application/rtf': 'application/vnd.google-apps.document',
+  'text/plain': 'application/vnd.google-apps.document',
+  'text/html': 'application/vnd.google-apps.document',
+  // Excel → Google Sheets
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'application/vnd.google-apps.spreadsheet',
+  'application/vnd.ms-excel': 'application/vnd.google-apps.spreadsheet',
+  'text/csv': 'application/vnd.google-apps.spreadsheet',
+  // PowerPoint → Google Slides
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'application/vnd.google-apps.presentation',
+  'application/vnd.ms-powerpoint': 'application/vnd.google-apps.presentation',
+};
+
+/**
+ * Get the Google Workspace mimeType for a given source mimeType, or null if
+ * the format is not convertible (e.g. PDF, images, archives).
+ */
+export function getGoogleConvertMimeType(sourceMimeType: string): string | null {
+  return GOOGLE_CONVERT_MAP[sourceMimeType] || null;
+}
+
+/**
+ * Strip the Office extension from a filename when converting to Google format.
+ * E.g. "Script.docx" → "Script"  (Google Docs don't have extensions)
+ */
+function stripOfficeExtension(fileName: string): string {
+  return fileName.replace(/\.(docx?|xlsx?|pptx?|rtf|csv|txt|html?)$/i, '');
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
@@ -47,17 +85,24 @@ export async function uploadToDrive(
   mimeType: string,
   content: Buffer | Readable,
   targetFolderId: string,
-  isSharedDrive?: boolean
+  isSharedDrive?: boolean,
+  /** Optional: convert to this Google Workspace mimeType (e.g. for .docx → Google Docs) */
+  convertToMimeType?: string
 ): Promise<UploadResult> {
   // Use the JWT SA client for Shared Drives (identity must match the SA added
   // as Content Manager). Use ADC client for legacy regular folders.
   const drive = isSharedDrive ? await getDriveClientAsSA() : getDriveClient();
 
+  // When converting, the requestBody.mimeType is the Google target format and
+  // media.mimeType is the source format. Also strip Office extensions from name.
+  const targetMimeType = convertToMimeType || mimeType;
+  const displayName = convertToMimeType ? stripOfficeExtension(fileName) : fileName;
+
   const response = await drive.files.create({
     supportsAllDrives: true,
     requestBody: {
-      name: fileName,
-      mimeType,
+      name: displayName,
+      mimeType: targetMimeType,
       parents: [targetFolderId],
     },
     media: {
