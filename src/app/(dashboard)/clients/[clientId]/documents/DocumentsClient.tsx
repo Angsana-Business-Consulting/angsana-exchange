@@ -32,7 +32,7 @@ import {
   looksLikeUid,
 } from '@/lib/documents/utils';
 import type { FolderTreeNode } from '@/lib/documents/utils';
-import type { DocumentFolderItem, UserRole, Campaign } from '@/types';
+import type { DocumentFolderItem, UserRole, Campaign, Proposition } from '@/types';
 
 // =============================================================================
 // Types
@@ -50,6 +50,7 @@ interface BrowseFile {
   uploadedByName: string;
   uploadedAt: string;
   campaignRef: string | null;
+  propositionRefs?: string[];
   status: string;
 }
 
@@ -217,9 +218,11 @@ function FileRow({
   clientId,
   role,
   campaigns,
+  propositions,
   folders,
   onRename,
   onLinkCampaign,
+  onLinkProposition,
   onMove,
   onDelete,
   onRefresh,
@@ -228,11 +231,13 @@ function FileRow({
   clientId: string;
   role: UserRole;
   campaigns: Pick<Campaign, 'id' | 'campaignName' | 'status'>[];
+  propositions: Proposition[];
   folders: BrowseFolder[];
   onRename: (docId: string, newName: string) => Promise<void>;
   onLinkCampaign: (docId: string, campaignId: string | null) => Promise<void>;
+  onLinkProposition: (docId: string, propositionRefs: string[]) => Promise<void>;
   onMove: (docId: string, targetFolderId: string) => Promise<void>;
-  onDelete: (docId: string, fileName: string) => Promise<void>;
+  onDelete: (docId: string) => Promise<void>;
   onRefresh: () => void;
 }) {
   const internal = isInternalRole(role);
@@ -240,6 +245,7 @@ function FileRow({
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(file.name);
   const [campaignMenuOpen, setCampaignMenuOpen] = useState(false);
+  const [propositionMenuOpen, setPropositionMenuOpen] = useState(false);
   const [moveMenuOpen, setMoveMenuOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -295,7 +301,7 @@ function FileRow({
   async function handleDelete() {
     setLoading(true);
     try {
-      await onDelete(file.documentId, file.name);
+      await onDelete(file.documentId);
     } finally {
       setLoading(false);
       setDeleteConfirm(false);
@@ -356,6 +362,24 @@ function FileRow({
         </span>
       ) : (
         <span className="shrink-0 text-[11px] italic text-gray-300">No campaign</span>
+      )}
+
+      {/* Proposition pills */}
+      {(file.propositionRefs || []).length > 0 && (
+        <div className="flex shrink-0 gap-1">
+          {file.propositionRefs!.map((propId) => {
+            const prop = propositions.find((p) => p.id === propId);
+            return (
+              <span
+                key={propId}
+                className="rounded-full px-2.5 py-0.5 text-[11px] font-medium"
+                style={{ background: '#F0E6F0', color: '#5C3D6E' }}
+              >
+                {prop?.name || propId}
+              </span>
+            );
+          })}
+        </div>
       )}
 
       {/* Three-dot menu */}
@@ -425,7 +449,49 @@ function FileRow({
                 )}
 
                 <button
-                  onClick={() => { setMoveMenuOpen(!moveMenuOpen); setCampaignMenuOpen(false); }}
+                  onClick={() => { setPropositionMenuOpen(!propositionMenuOpen); setCampaignMenuOpen(false); setMoveMenuOpen(false); }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  <Link2 className="h-[15px] w-[15px]" /> Link to proposition
+                </button>
+
+                {propositionMenuOpen && (
+                  <div className="border-t border-gray-100 bg-gray-50 px-2 py-1 max-h-48 overflow-y-auto">
+                    {(file.propositionRefs || []).length > 0 && (
+                      <button
+                        onClick={async () => { await onLinkProposition(file.documentId, []); setPropositionMenuOpen(false); setMenuOpen(false); onRefresh(); }}
+                        className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-red-600 hover:bg-red-50"
+                      >
+                        Remove all links
+                      </button>
+                    )}
+                    {propositions
+                      .filter((p) => p.status === 'active')
+                      .map((p) => {
+                        const isLinked = (file.propositionRefs || []).includes(p.id);
+                        return (
+                          <button
+                            key={p.id}
+                            onClick={async () => {
+                              const current = file.propositionRefs || [];
+                              const updated = isLinked
+                                ? current.filter((id) => id !== p.id)
+                                : [...current, p.id];
+                              await onLinkProposition(file.documentId, updated);
+                              onRefresh();
+                            }}
+                            className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-white ${isLinked ? 'font-medium text-[#5C3D6E]' : 'text-gray-600'}`}
+                          >
+                            <span className={`inline-block h-3 w-3 rounded border ${isLinked ? 'bg-[#5C3D6E] border-[#5C3D6E]' : 'border-gray-300'}`} />
+                            {p.name}
+                          </button>
+                        );
+                      })}
+                  </div>
+                )}
+
+                <button
+                  onClick={() => { setMoveMenuOpen(!moveMenuOpen); setCampaignMenuOpen(false); setPropositionMenuOpen(false); }}
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
                 >
                   <FolderInput className="h-[15px] w-[15px]" /> Move to folder
@@ -516,6 +582,8 @@ export default function DocumentsClient({
   const [creating, setCreating] = useState(false);
   const [showNewMenu, setShowNewMenu] = useState(false);
   const [showUnregistered, setShowUnregistered] = useState(false);
+  const [propositionFilter, setPropositionFilter] = useState<string>(searchParams.get('proposition') || '');
+  const [propositions, setPropositions] = useState<Proposition[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const newMenuRef = useRef<HTMLDivElement>(null);
 
@@ -600,6 +668,12 @@ export default function DocumentsClient({
   const showUpload = selectedCategory && selectedFolderTemplate
     && canUploadToFolder(role, selectedCategory, selectedFolderTemplate.isContainer);
 
+  // ── Client-side proposition filtering ────────────────────────────────────
+  function filterFilesByProposition(files: BrowseFile[]): BrowseFile[] {
+    if (!propositionFilter) return files;
+    return files.filter((f) => (f.propositionRefs || []).includes(propositionFilter));
+  }
+
   // ── API Handlers ────────────────────────────────────────────────────────
   async function handleRename(docId: string, newName: string) {
     // Optimistic update — update local state immediately
@@ -629,6 +703,29 @@ export default function DocumentsClient({
     }
   }
 
+  // ── Fetch propositions ──────────────────────────────────────────────────
+  useEffect(() => {
+    fetch(`/api/clients/${clientId}/propositions?status=active`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success && json.data) setPropositions(json.data);
+      })
+      .catch(() => {}); // silent
+  }, [clientId]);
+
+  async function handleLinkProposition(docId: string, propRefs: string[]) {
+    const res = await fetch(`/api/clients/${clientId}/documents/${docId}/proposition`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ propositionRefs: propRefs }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      alert(body.error || 'Link proposition failed');
+    }
+    fetchDocuments();
+  }
+
   async function handleLinkCampaign(docId: string, campaignId: string | null) {
     const res = await fetch(`/api/clients/${clientId}/documents/${docId}/campaign`, {
       method: 'PATCH',
@@ -642,7 +739,7 @@ export default function DocumentsClient({
     fetchDocuments();
   }
 
-  async function handleDelete(docId: string, _fileName: string) {
+  async function handleDelete(docId: string) {
     const res = await fetch(`/api/clients/${clientId}/documents/${docId}`, {
       method: 'DELETE',
     });
@@ -766,18 +863,6 @@ export default function DocumentsClient({
     fetchDocuments();
   }
 
-  async function handleRegister(driveFileId: string, folderCat: string) {
-    const res = await fetch(`/api/clients/${clientId}/documents/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ driveFileId, folderCategory: folderCat }),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      alert(body.error || 'Register failed');
-    }
-    fetchDocuments();
-  }
 
   // =====================================================================
   // RENDER
@@ -792,21 +877,47 @@ export default function DocumentsClient({
           <p className="text-sm text-gray-500 mt-0.5">{clientName}</p>
         </div>
 
-        {/* Campaign filter dropdown */}
-        <div className="relative">
-          <select
-            value={campaignFilter}
-            onChange={(e) => handleCampaignChange(e.target.value)}
-            className="appearance-none rounded-full border border-gray-200 bg-white pl-4 pr-8 py-2 text-sm text-gray-600 outline-none focus:border-[#3B7584] focus:ring-1 focus:ring-[#3B7584]/20 cursor-pointer"
-          >
-            <option value="">All campaigns</option>
-            {campaigns
-              .filter((c) => c.status !== 'completed')
-              .map((c) => (
-                <option key={c.id} value={c.id}>{c.campaignName}</option>
-              ))}
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+        {/* Filter dropdowns */}
+        <div className="flex items-center gap-2">
+          {/* Proposition filter dropdown */}
+          <div className="relative">
+            <select
+              value={propositionFilter}
+              onChange={(e) => {
+                setPropositionFilter(e.target.value);
+                const url = new URL(window.location.href);
+                if (e.target.value) url.searchParams.set('proposition', e.target.value);
+                else url.searchParams.delete('proposition');
+                router.replace(url.pathname + url.search, { scroll: false });
+              }}
+              className="appearance-none rounded-full border border-gray-200 bg-white pl-4 pr-8 py-2 text-sm text-gray-600 outline-none focus:border-[#5C3D6E] focus:ring-1 focus:ring-[#5C3D6E]/20 cursor-pointer"
+            >
+              <option value="">All propositions</option>
+              {propositions
+                .filter((p) => p.status === 'active')
+                .map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+          </div>
+
+          {/* Campaign filter dropdown */}
+          <div className="relative">
+            <select
+              value={campaignFilter}
+              onChange={(e) => handleCampaignChange(e.target.value)}
+              className="appearance-none rounded-full border border-gray-200 bg-white pl-4 pr-8 py-2 text-sm text-gray-600 outline-none focus:border-[#3B7584] focus:ring-1 focus:ring-[#3B7584]/20 cursor-pointer"
+            >
+              <option value="">All campaigns</option>
+              {campaigns
+                .filter((c) => c.status !== 'completed')
+                .map((c) => (
+                  <option key={c.id} value={c.id}>{c.campaignName}</option>
+                ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+          </div>
         </div>
       </div>
 
@@ -955,22 +1066,24 @@ export default function DocumentsClient({
                 )}
 
                 {/* File list */}
-                {selectedFolder.files.length === 0 ? (
+                {filterFilesByProposition(selectedFolder.files).length === 0 ? (
                   <div className="flex items-center justify-center rounded-lg border-2 border-dashed border-gray-200 py-12">
-                    <p className="text-sm italic text-gray-400">No documents in this folder</p>
+                    <p className="text-sm italic text-gray-400">{propositionFilter ? 'No documents match the selected proposition' : 'No documents in this folder'}</p>
                   </div>
                 ) : (
                   <div className="space-y-1.5">
-                    {selectedFolder.files.map((file) => (
+                    {filterFilesByProposition(selectedFolder.files).map((file) => (
                       <FileRow
                         key={file.documentId}
                         file={file}
                         clientId={clientId}
                         role={role}
                         campaigns={campaigns}
+                        propositions={propositions}
                         folders={browseData?.folders || []}
                         onRename={handleRename}
                         onLinkCampaign={handleLinkCampaign}
+                        onLinkProposition={handleLinkProposition}
                         onMove={handleMoveDocument}
                         onDelete={handleDelete}
                         onRefresh={() => fetchDocuments()}
@@ -987,7 +1100,8 @@ export default function DocumentsClient({
                   // Skip container folders — show children directly
                   if (tmpl?.isContainer) return null;
 
-                  const isEmpty = folder.files.length === 0;
+                  const filteredFiles = filterFilesByProposition(folder.files);
+                  const isEmpty = filteredFiles.length === 0;
                   const displayName = getFolderDisplayName(folder.folderCategory, folderTemplate);
 
                   return (
@@ -1010,7 +1124,7 @@ export default function DocumentsClient({
                         <p className="ml-5 text-xs italic text-gray-300">No documents</p>
                       ) : (
                         <div className="ml-5 space-y-1">
-                          {folder.files.map((file) => (
+                          {filteredFiles.map((file) => (
                             <div key={file.documentId} className="flex items-center gap-2.5 py-1">
                               <FileText className="shrink-0" style={{ width: '14px', height: '14px', color: '#3B7584', strokeWidth: 1.5 }} />
                               <button

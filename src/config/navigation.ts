@@ -46,6 +46,12 @@ export const clientNavItems: NavItem[] = [
     module: 'sowhats',
   },
   {
+    label: 'Prospecting Profile',
+    route: '/clients/{clientId}/prospecting-profile',
+    icon: 'UserSearch',
+    module: 'prospecting-profile',
+  },
+  {
     label: 'Wishlists',
     route: '/clients/{clientId}/wishlists',
     icon: 'Target',

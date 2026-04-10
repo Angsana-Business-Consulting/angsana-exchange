@@ -17,6 +17,7 @@ import {
   Settings,
   Settings2,
   UserCog,
+  UserSearch,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
@@ -43,6 +44,7 @@ const iconMap: Record<string, LucideIcon> = {
   Settings,
   Settings2,
   UserCog,
+  UserSearch,
 };
 
 /**

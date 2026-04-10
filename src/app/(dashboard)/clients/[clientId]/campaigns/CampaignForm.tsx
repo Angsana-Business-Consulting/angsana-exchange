@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import type { Campaign, ManagedListItem, SoWhat } from '@/types';
+import type { Campaign, ManagedListItem, SoWhat, Proposition } from '@/types';
 import { SOWHAT_ORIENTATION_CONFIG } from '@/types';
 import { AlertTriangle } from 'lucide-react';
 
@@ -231,6 +231,10 @@ export function CampaignForm({
   const [campaignName, setCampaignName] = useState(initialData?.campaignName || '');
   const [campaignSummary, setCampaignSummary] = useState(initialData?.campaignSummary || '');
   const [serviceTypeId, setServiceTypeId] = useState(initialData?.serviceTypeId || '');
+  const [propositionRefs, setPropositionRefs] = useState<string[]>(
+    initialData?.propositionRefs || []
+  );
+  const [propositions, setPropositions] = useState<Proposition[]>([]);
   const [owner, setOwner] = useState(initialData?.owner || '');
   const [startDate, setStartDate] = useState(
     initialData?.startDate
@@ -261,6 +265,22 @@ export function CampaignForm({
   );
   const [soWhatSearch, setSoWhatSearch] = useState('');
 
+  // Fetch propositions for this client
+  useEffect(() => {
+    async function fetchPropositions() {
+      try {
+        const res = await fetch(`/api/clients/${clientId}/propositions?status=active`);
+        if (res.ok) {
+          const data = await res.json();
+          setPropositions(data.propositions || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch propositions:', err);
+      }
+    }
+    fetchPropositions();
+  }, [clientId]);
+
   // Get service type label from id
   function getServiceTypeLabel(id: string): string {
     const item = (managedLists.serviceTypes || []).find((i) => i.id === id);
@@ -280,6 +300,7 @@ export function CampaignForm({
         campaignSummary,
         serviceType,
         serviceTypeId,
+        propositionRefs,
         owner,
         startDate,
         targetGeographies,
@@ -421,6 +442,66 @@ export function CampaignForm({
                 ))}
               </select>
             </div>
+
+            {/* Propositions */}
+            {propositions.length > 0 && (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">
+                  Propositions
+                </label>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {propositionRefs.map((propId) => {
+                    const prop = propositions.find((p) => p.id === propId);
+                    return prop ? (
+                      <span
+                        key={propId}
+                        className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium"
+                        style={{ backgroundColor: '#F0E6F0', color: '#5C3D6E', borderColor: '#D4C4D4' }}
+                      >
+                        {prop.name}
+                        <button
+                          type="button"
+                          onClick={() => setPropositionRefs(propositionRefs.filter((id) => id !== propId))}
+                          className="ml-0.5 hover:opacity-70"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ) : null;
+                  })}
+                </div>
+                <select
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value && !propositionRefs.includes(e.target.value)) {
+                      setPropositionRefs([...propositionRefs, e.target.value]);
+                    }
+                    e.target.value = '';
+                  }}
+                  className="w-full h-9 rounded-md border border-gray-300 bg-white px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-cyan)]"
+                >
+                  <option value="">Add a proposition...</option>
+                  {/* Group by category */}
+                  {Array.from(new Set(propositions.map((p) => p.category))).map((cat) => (
+                    <optgroup key={cat} label={cat || 'Uncategorised'}>
+                      {propositions
+                        .filter((p) => p.category === cat && !propositionRefs.includes(p.id))
+                        .map((p) => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                    </optgroup>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-[var(--muted)]">
+                  Which of the client&apos;s propositions is this campaign prospecting for? Most campaigns target 1–2 propositions.
+                </p>
+                {propositionRefs.length >= 4 && (
+                  <p className="mt-1 text-xs text-amber-600">
+                    ⚠ Campaigns typically focus on 1–2 propositions. A campaign targeting many propositions may need to be split.
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Owner */}
             <div>

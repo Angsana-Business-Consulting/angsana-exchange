@@ -198,6 +198,8 @@ export interface Campaign {
   serviceType: string;
   /** Service type ID (references managed list) */
   serviceTypeId: string;
+  /** Proposition IDs from client's propositions sub-collection (Slice 8) */
+  propositionRefs?: string[];
   /** Campaign owner name */
   owner: string;
   /** Campaign start date (ISO string for client-side use) */
@@ -265,7 +267,9 @@ export type ManagedListName =
   | 'titleBands'
   | 'companySizes'
   | 'therapyAreas'
-  | 'documentFolders';
+  | 'documentFolders'
+  | 'propositionCategories'
+  | 'messagingTypes';
 
 /**
  * A single item within a managed list.
@@ -654,6 +658,16 @@ export const MANAGED_LIST_CONFIG: Record<
     description: 'Canonical folder structure for client Drive folders — defines visibility',
     hasOrientation: false,
   },
+  propositionCategories: {
+    label: 'Proposition Categories',
+    description: 'Categories for client propositions — e.g. Healthcare, Technology',
+    hasOrientation: false,
+  },
+  messagingTypes: {
+    label: 'Messaging Types',
+    description: 'Types for Market Messaging Library entries — e.g. Elevator Pitch, Case Study',
+    hasOrientation: false,
+  },
 };
 
 // =============================================================================
@@ -768,3 +782,307 @@ export interface FolderMapEntry {
  * Written at provisioning time, read by upload/browse/register operations.
  */
 export type FolderMap = Record<string, FolderMapEntry>;
+
+// =============================================================================
+// Proposition (Slice 8 — CPP)
+// =============================================================================
+
+/**
+ * Proposition status values.
+ */
+export type PropositionStatus = 'active' | 'inactive';
+
+/**
+ * Proposition document from Firestore.
+ * Stored at tenants/{tenantId}/clients/{clientId}/propositions/{propositionId}
+ */
+export interface Proposition {
+  /** Document ID */
+  id: string;
+  /** Short label. Max 80 characters. */
+  name: string;
+  /** Reference to a propositionCategories managed list item. */
+  category: string;
+  /** Additional context. Max 280 characters. */
+  description: string;
+  /** active / inactive. Inactive propositions hidden from campaign pickers. */
+  status: PropositionStatus;
+  /** Display ordering within the category group. Default: 0. */
+  sortOrder: number;
+  /** UID of creator. */
+  createdBy: string;
+  /** Creation timestamp (ISO string). */
+  createdAt: string;
+  /** UID of last editor. */
+  lastUpdatedBy: string;
+  /** Last modification timestamp (ISO string). */
+  lastUpdatedAt: string;
+}
+
+/**
+ * Proposition status display configuration.
+ */
+export const PROPOSITION_STATUS_CONFIG: Record<
+  PropositionStatus,
+  { label: string; colour: string; bgColour: string }
+> = {
+  active: { label: 'Active', colour: '#059669', bgColour: '#ECFDF5' },
+  inactive: { label: 'Inactive', colour: '#6B7280', bgColour: '#F3F4F6' },
+};
+
+// =============================================================================
+// Prospecting Profile — ICP (Slice 8)
+// =============================================================================
+
+/**
+ * ICP industries object.
+ */
+export interface ICPIndustries {
+  /** Managed list item IDs from sectors. */
+  managedListRefs: string[];
+  /** Free text specifics. Max 500 chars. */
+  specifics: string;
+}
+
+/**
+ * Company sizing entry type.
+ */
+export type CompanySizingType = 'revenue' | 'headcount' | 'tier' | 'custom';
+
+/**
+ * A single company sizing criterion.
+ */
+export interface CompanySizingEntry {
+  /** Type of sizing criterion. */
+  type: CompanySizingType;
+  /** Display label. Max 80 chars. */
+  label: string;
+  /** Array of value strings. */
+  values: string[];
+}
+
+/**
+ * ICP managed list + specifics object (used for titles, seniority, geographies).
+ */
+export interface ICPManagedListField {
+  /** Managed list item IDs. */
+  managedListRefs: string[];
+  /** Free text specifics. Max 500 chars. */
+  specifics: string;
+}
+
+/**
+ * Buying process type.
+ */
+export type BuyingProcessType =
+  | 'single-decision-maker'
+  | 'committee'
+  | 'procurement-led'
+  | 'consensus';
+
+/**
+ * Buying process object.
+ */
+export interface ICPBuyingProcess {
+  /** Type of buying process. */
+  type: BuyingProcessType | '';
+  /** Free text notes. Max 500 chars. */
+  notes: string;
+}
+
+/**
+ * ICP exclusion entry.
+ */
+export interface ICPExclusion {
+  /** Category label. Max 80 chars. */
+  category: string;
+  /** Description. Max 280 chars. */
+  description: string;
+}
+
+/**
+ * Ideal Client Profile structure.
+ */
+export interface ICP {
+  /** Target industries. */
+  industries: ICPIndustries;
+  /** Flexible company sizing criteria. */
+  companySizing: CompanySizingEntry[];
+  /** Target titles. */
+  titles: ICPManagedListField;
+  /** Target seniority. */
+  seniority: ICPManagedListField;
+  /** Buying process. */
+  buyingProcess: ICPBuyingProcess;
+  /** Target geographies. */
+  geographies: ICPManagedListField;
+  /** Categorical exclusions. */
+  exclusions: ICPExclusion[];
+  /** UID of last editor of ICP section. */
+  lastUpdatedBy: string;
+  /** Last modification of ICP section (ISO string). */
+  lastUpdatedAt: string;
+}
+
+/**
+ * Buying process display configuration.
+ */
+export const BUYING_PROCESS_CONFIG: Record<
+  BuyingProcessType,
+  { label: string }
+> = {
+  'single-decision-maker': { label: 'Single Decision Maker' },
+  committee: { label: 'Committee' },
+  'procurement-led': { label: 'Procurement-Led' },
+  consensus: { label: 'Consensus' },
+};
+
+// =============================================================================
+// Prospecting Profile — Market Messaging (Slice 8)
+// =============================================================================
+
+/**
+ * Market messaging entry.
+ */
+export interface MarketMessagingEntry {
+  /** Generated UUID for each entry. */
+  id: string;
+  /** Short label. Max 120 characters. */
+  title: string;
+  /** From messagingTypes managed list. */
+  type: string;
+  /** Actual text for short items. Max 500 characters. */
+  content: string;
+  /** Firestore document ID from documents registry. */
+  documentRef: string;
+  /** URL for web-based resources. */
+  externalUrl: string;
+  /** Internal annotation. Max 280 characters. Internal users only. */
+  notes: string;
+  /** Proposition IDs this material relates to. */
+  propositionRefs: string[];
+  /** UID of creator. */
+  createdBy: string;
+  /** Creation timestamp (ISO string). */
+  createdAt: string;
+}
+
+// =============================================================================
+// Prospecting Profile — Recommendations (Slice 8)
+// =============================================================================
+
+/**
+ * Recommendation status values.
+ */
+export type RecommendationStatus = 'proposed' | 'accepted' | 'superseded';
+
+/**
+ * Recommendation entry.
+ */
+export interface Recommendation {
+  /** Generated UUID. */
+  id: string;
+  /** Specific, actionable statement. Max 280 characters. */
+  recommendation: string;
+  /** Why Angsana believes this. Max 500 characters. */
+  rationale: string;
+  /** Which propositions this recommendation relates to. */
+  propositionRefs: string[];
+  /** proposed / accepted / superseded. */
+  status: RecommendationStatus;
+  /** UID of creator. */
+  createdBy: string;
+  /** Creation timestamp (ISO string). */
+  createdAt: string;
+  /** UID of last editor. */
+  lastUpdatedBy: string;
+  /** Last modification timestamp (ISO string). */
+  lastUpdatedAt: string;
+}
+
+/**
+ * Recommendation status display configuration.
+ */
+export const RECOMMENDATION_STATUS_CONFIG: Record<
+  RecommendationStatus,
+  { label: string; colour: string; bgColour: string }
+> = {
+  proposed: { label: 'Proposed', colour: '#D97706', bgColour: '#FFFBEB' },
+  accepted: { label: 'Accepted', colour: '#059669', bgColour: '#ECFDF5' },
+  superseded: { label: 'Superseded', colour: '#6B7280', bgColour: '#F3F4F6' },
+};
+
+// =============================================================================
+// Prospecting Profile — AI Review (Slice 8)
+// =============================================================================
+
+/**
+ * AI review status values.
+ */
+export type AIReviewStatus = 'not-requested' | 'pending' | 'complete';
+
+/**
+ * AI Review section.
+ */
+export interface AIReview {
+  /** Last review timestamp (ISO string) or null. */
+  lastReviewDate: string | null;
+  /** Review status. */
+  status: AIReviewStatus;
+  /** Findings (empty for now). */
+  findings: string[];
+}
+
+// =============================================================================
+// Prospecting Profile — Full Document (Slice 8)
+// =============================================================================
+
+/**
+ * Full prospecting profile document.
+ * Stored at tenants/{tenantId}/clients/{clientId}/prospectingProfile (single doc)
+ */
+export interface ProspectingProfile {
+  /** Ideal Client Profile. */
+  icp: ICP;
+  /** Market messaging library entries. */
+  marketMessaging: MarketMessagingEntry[];
+  /** Angsana recommendations (internal only). */
+  recommendations: Recommendation[];
+  /** AI review placeholder. */
+  aiReview: AIReview;
+  /** UID of last editor across all sections. */
+  lastUpdatedBy: string;
+  /** Last modification across all sections (ISO string). */
+  lastUpdatedAt: string;
+}
+
+// =============================================================================
+// Managed Lists — Extended (Slice 8)
+// =============================================================================
+
+/**
+ * Known managed list names — extended with Slice 8 lists.
+ */
+export type ManagedListNameExtended =
+  | ManagedListName
+  | 'propositionCategories'
+  | 'messagingTypes';
+
+/**
+ * Display configuration for Slice 8 managed lists.
+ */
+export const MANAGED_LIST_CONFIG_EXTENDED: Record<
+  'propositionCategories' | 'messagingTypes',
+  { label: string; description: string; hasOrientation: boolean }
+> = {
+  propositionCategories: {
+    label: 'Proposition Categories',
+    description: 'Categories for client propositions — e.g. Healthcare, Technology',
+    hasOrientation: false,
+  },
+  messagingTypes: {
+    label: 'Messaging Types',
+    description: 'Types of market messaging material — e.g. Elevator Pitch, Case Study',
+    hasOrientation: false,
+  },
+};

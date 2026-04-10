@@ -15,6 +15,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   sowhats: 'So Whats',
   checkins: 'Check-ins',
   dnc: 'DNC / MSA-PSL',
+  'prospecting-profile': 'Prospecting Profile',
 };
 
 function getPageTitle(pathname: string): string {

@@ -5,7 +5,8 @@
  * Creates everything needed for a working Slice 2 environment:
  *   1. Firebase Auth users (4 test users with displayNames)
  *   2. Custom claims on each user (tenantId, role, clientId, assignedClients, permittedModules)
- *   3. Firestore structure: tenant config, managed lists (all 6), clients, campaigns with targeting
+ *   3. Firestore structure: tenant config, managed lists (all 8), clients, campaigns with targeting
+ *   4. Slice 8: propositionCategories, messagingTypes managed lists + propositions + prospecting profiles
  *
  * Idempotent: safe to re-run. Existing users are updated, Firestore docs are overwritten.
  *
@@ -77,7 +78,7 @@ const TEST_USERS: TestUser[] = [
       clientId: null,
       assignedClients: ['*'],
       permittedModules: [
-        'campaigns', 'checkins', 'actions', 'sowhats', 'wishlists',
+        'campaigns', 'checkins', 'actions', 'sowhats', 'prospecting-profile', 'wishlists',
         'dnc', 'msa-psl', 'documents', 'dashboard', 'admin',
       ],
     },
@@ -92,7 +93,7 @@ const TEST_USERS: TestUser[] = [
       clientId: null,
       assignedClients: ['cegid-spain', 'wavix'],
       permittedModules: [
-        'campaigns', 'checkins', 'actions', 'sowhats', 'wishlists',
+        'campaigns', 'checkins', 'actions', 'sowhats', 'prospecting-profile', 'wishlists',
         'dnc', 'msa-psl', 'documents', 'dashboard',
       ],
     },
@@ -107,7 +108,7 @@ const TEST_USERS: TestUser[] = [
       clientId: 'cegid-spain',
       assignedClients: null,
       permittedModules: [
-        'campaigns', 'checkins', 'actions', 'sowhats', 'wishlists', 'documents', 'dashboard', 'approvals',
+        'campaigns', 'checkins', 'actions', 'sowhats', 'prospecting-profile', 'wishlists', 'documents', 'dashboard', 'approvals',
       ],
     },
   },
@@ -121,7 +122,7 @@ const TEST_USERS: TestUser[] = [
       clientId: 'cegid-spain',
       assignedClients: null,
       permittedModules: [
-        'campaigns', 'checkins', 'actions', 'sowhats', 'wishlists', 'documents', 'dashboard',
+        'campaigns', 'checkins', 'actions', 'sowhats', 'prospecting-profile', 'wishlists', 'documents', 'dashboard',
       ],
     },
   },
@@ -320,6 +321,34 @@ async function seedFirestore() {
     updatedBy: 'seed-script',
   });
   console.log('    ✓ documentFolders (9 items)');
+
+  // 8.1 propositionCategories (Slice 8 — 4 items)
+  await managedListsRef.doc('propositionCategories').set({
+    items: [
+      { id: 'healthcare', label: 'Healthcare', active: true },
+      { id: 'marketing-services', label: 'Marketing Services', active: true },
+      { id: 'technology', label: 'Technology', active: true },
+      { id: 'other', label: 'Other', active: true },
+    ],
+    updatedAt: now,
+    updatedBy: 'seed-script',
+  });
+  console.log('    ✓ propositionCategories (4 items)');
+
+  // 8.2 messagingTypes (Slice 8 — 6 items)
+  await managedListsRef.doc('messagingTypes').set({
+    items: [
+      { id: 'elevator-pitch', label: 'Elevator Pitch', active: true },
+      { id: 'linkedin-messaging', label: 'LinkedIn Messaging', active: true },
+      { id: 'case-study', label: 'Case Study', active: true },
+      { id: 'hook-soundbite', label: 'Hook / Soundbite', active: true },
+      { id: 'brand-guidelines', label: 'Brand Guidelines', active: true },
+      { id: 'other', label: 'Other', active: true },
+    ],
+    updatedAt: now,
+    updatedBy: 'seed-script',
+  });
+  console.log('    ✓ messagingTypes (6 items)');
 
   // --- Client: Cegid Spain (full, with campaigns) ---
   console.log('  Seeding client: cegid-spain...');
@@ -806,6 +835,191 @@ async function seedFirestore() {
     createdAt: now,
     updatedAt: now,
   });
+
+  // =========================================================================
+  // Slice 8 — Propositions & Prospecting Profiles
+  // =========================================================================
+
+  // --- Cegid Spain: Propositions sub-collection ---
+  console.log('  Seeding Slice 8 propositions for cegid-spain...');
+  const cegidPropsRef = cegidRef.collection('propositions');
+
+  const cegidProps = [
+    {
+      id: 'erp-solutions',
+      data: {
+        name: 'ERP Solutions',
+        category: 'technology',
+        description: 'Enterprise resource planning for mid-market retailers and fashion brands.',
+        status: 'active',
+        sortOrder: 0,
+        createdBy: 'keith@angsana.com',
+        createdAt: now.toDate().toISOString(),
+        lastUpdatedBy: 'keith@angsana.com',
+        lastUpdatedAt: now.toDate().toISOString(),
+      },
+    },
+    {
+      id: 'retail-pos',
+      data: {
+        name: 'Retail POS',
+        category: 'technology',
+        description: 'Point of sale solutions for multi-site retail operations.',
+        status: 'active',
+        sortOrder: 1,
+        createdBy: 'keith@angsana.com',
+        createdAt: now.toDate().toISOString(),
+        lastUpdatedBy: 'keith@angsana.com',
+        lastUpdatedAt: now.toDate().toISOString(),
+      },
+    },
+    {
+      id: 'hr-payroll',
+      data: {
+        name: 'HR & Payroll',
+        category: 'technology',
+        description: 'Cloud HR and payroll management for mid-market enterprises.',
+        status: 'active',
+        sortOrder: 2,
+        createdBy: 'keith@angsana.com',
+        createdAt: now.toDate().toISOString(),
+        lastUpdatedBy: 'keith@angsana.com',
+        lastUpdatedAt: now.toDate().toISOString(),
+      },
+    },
+  ];
+
+  for (const prop of cegidProps) {
+    await cegidPropsRef.doc(prop.id).set(prop.data);
+    console.log(`    ✓ Proposition: ${prop.data.name} (${prop.data.category})`);
+  }
+
+  // --- Cegid Spain: Prospecting Profile ---
+  console.log('  Seeding Slice 8 prospecting profile for cegid-spain...');
+  await cegidRef.collection('prospectingProfile').doc('profile').set({
+    icp: {
+      industries: {
+        managedListRefs: ['retail-consumer', 'professional-services'],
+        specifics: 'Focus on fashion, luxury, and multi-brand retail. Also expanding into hospitality.',
+      },
+      companySizing: [
+        { type: 'revenue', label: 'Annual Revenue', values: ['£50M–£500M', '£500M+'] },
+      ],
+      titles: {
+        managedListRefs: ['cfo-finance-director', 'cto-cio-cdo', 'vp-director-operations'],
+        specifics: 'Also target Head of Digital Transformation where it exists.',
+      },
+      seniority: {
+        managedListRefs: [],
+        specifics: '',
+      },
+      buyingProcess: {
+        type: 'committee',
+        notes: 'Typically IT + Finance + Operations stakeholders involved.',
+      },
+      geographies: {
+        managedListRefs: ['uk', 'iberia'],
+        specifics: 'UK-headquartered companies with European operations.',
+      },
+      exclusions: [
+        { category: 'company size', description: 'No companies under 200 employees.' },
+      ],
+      lastUpdatedBy: 'keith@angsana.com',
+      lastUpdatedAt: now.toDate().toISOString(),
+    },
+    marketMessaging: [
+      {
+        id: 'msg-1',
+        title: 'Elevator Pitch — ERP',
+        type: 'elevator-pitch',
+        content: 'Cegid delivers cloud-native ERP built for retail, unifying POS, inventory and finance in a single platform trusted by 1,000+ retail brands across 75 countries.',
+        documentRef: '',
+        externalUrl: '',
+        notes: 'Core pitch — approved by client marketing team.',
+        propositionRefs: ['erp-solutions'],
+        createdBy: 'mike@angsana.com',
+        createdAt: now.toDate().toISOString(),
+      },
+      {
+        id: 'msg-2',
+        title: 'LinkedIn Hook — Digital Transformation',
+        type: 'hook-soundbite',
+        content: 'Still running your retail operation on spreadsheets and legacy systems? The brands that adapted fastest to omnichannel grew 3x faster.',
+        documentRef: '',
+        externalUrl: '',
+        notes: '',
+        propositionRefs: ['retail-pos'],
+        createdBy: 'mike@angsana.com',
+        createdAt: now.toDate().toISOString(),
+      },
+    ],
+    recommendations: [
+      {
+        id: 'rec-1',
+        recommendation: 'Lead with ERP proposition into UK mid-market retailers (£50M–£500M), targeting CFOs and CTOs. Strongest conversion rates in this segment.',
+        rationale: 'Historical data shows highest engagement from CFOs in mid-market retail when ERP consolidation is the lead message.',
+        propositionRefs: ['erp-solutions'],
+        status: 'proposed',
+        createdBy: 'keith@angsana.com',
+        createdAt: now.toDate().toISOString(),
+        lastUpdatedBy: 'keith@angsana.com',
+        lastUpdatedAt: now.toDate().toISOString(),
+      },
+    ],
+    aiReview: {
+      lastReviewDate: '',
+      status: 'not-requested',
+      findings: [],
+    },
+    lastUpdatedBy: 'keith@angsana.com',
+    lastUpdatedAt: now.toDate().toISOString(),
+  });
+  console.log('    ✓ Prospecting profile with ICP, 2 messaging entries, 1 recommendation');
+
+  // --- Cegid Spain: Add propositionRefs to existing campaigns ---
+  console.log('  Updating Cegid campaigns with propositionRefs...');
+  await campaignsRef.doc('iberia-retail-pos-fashion').update({ propositionRefs: ['retail-pos'] });
+  await campaignsRef.doc('iberia-retail-pos-outdoor').update({ propositionRefs: ['retail-pos'] });
+  console.log('    ✓ Linked 2 campaigns to Retail POS proposition');
+
+  // --- Wavix: Propositions sub-collection (Test Provision Client) ---
+  console.log('  Seeding Slice 8 propositions for wavix...');
+  const wavixPropsRef = wavixRef.collection('propositions');
+
+  await wavixPropsRef.doc('general-pipeline').set({
+    name: 'General Pipeline',
+    category: 'other',
+    description: 'Broad pipeline building for restaurant sector.',
+    status: 'active',
+    sortOrder: 0,
+    createdBy: 'keith@angsana.com',
+    createdAt: now.toDate().toISOString(),
+    lastUpdatedBy: 'keith@angsana.com',
+    lastUpdatedAt: now.toDate().toISOString(),
+  });
+  console.log('    ✓ Proposition: General Pipeline (other)');
+
+  // --- Wavix: Empty Prospecting Profile ---
+  console.log('  Seeding Slice 8 empty prospecting profile for wavix...');
+  await wavixRef.collection('prospectingProfile').doc('profile').set({
+    icp: {
+      industries: { managedListRefs: [], specifics: '' },
+      companySizing: [],
+      titles: { managedListRefs: [], specifics: '' },
+      seniority: { managedListRefs: [], specifics: '' },
+      buyingProcess: { type: '', notes: '' },
+      geographies: { managedListRefs: [], specifics: '' },
+      exclusions: [],
+      lastUpdatedBy: '',
+      lastUpdatedAt: '',
+    },
+    marketMessaging: [],
+    recommendations: [],
+    aiReview: { lastReviewDate: '', status: 'not-requested', findings: [] },
+    lastUpdatedBy: '',
+    lastUpdatedAt: '',
+  });
+  console.log('    ✓ Empty prospecting profile (tests empty state)');
 }
 
 // =============================================================================
@@ -882,7 +1096,12 @@ async function main() {
   console.log('');
   console.log('Managed lists seeded:');
   console.log('  serviceTypes (7), sectors (10), geographies (12),');
-  console.log('  titleBands (11), companySizes (4), therapyAreas (9)');
+  console.log('  titleBands (11), companySizes (4), therapyAreas (9),');
+  console.log('  documentFolders (9), propositionCategories (4), messagingTypes (6)');
+  console.log('');
+  console.log('Slice 8 data seeded:');
+  console.log('  Cegid Spain: 3 propositions, full prospecting profile');
+  console.log('  Wavix: 1 proposition, empty prospecting profile');
   console.log('');
   console.log('Test accounts (password: Exchange2026!):');
   for (const user of TEST_USERS) {

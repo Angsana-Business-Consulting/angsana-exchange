@@ -11,6 +11,8 @@ const LIST_NAMES: ManagedListName[] = [
   'titleBands',
   'companySizes',
   'therapyAreas',
+  'propositionCategories',
+  'messagingTypes',
 ];
 
 /**

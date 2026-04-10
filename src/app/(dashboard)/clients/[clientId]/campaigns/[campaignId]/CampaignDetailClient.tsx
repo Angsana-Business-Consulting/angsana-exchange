@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CAMPAIGN_STATUS_CONFIG, CHECKIN_TYPE_CONFIG, ACTION_STATUS_CONFIG, SOWHAT_STATUS_CONFIG, SOWHAT_ORIENTATION_CONFIG } from '@/types';
-import type { Campaign, ManagedListItem, StatusHistoryEntry, CheckInType, ActionStatus, SoWhat } from '@/types';
+import type { Campaign, ManagedListItem, StatusHistoryEntry, CheckInType, ActionStatus, SoWhat, Proposition } from '@/types';
 import CampaignDocumentsCard from '@/components/documents/CampaignDocumentsCard';
 
 // =============================================================================
@@ -375,6 +375,23 @@ export function CampaignDetailClient({
 }) {
   const [campaign, setCampaign] = useState(initialCampaign);
   const [toastMessage, setToastMessage] = useState('');
+  const [propositions, setPropositions] = useState<Proposition[]>([]);
+
+  // Fetch propositions for this client
+  useEffect(() => {
+    async function fetchPropositions() {
+      try {
+        const res = await fetch(`/api/clients/${clientId}/propositions`);
+        if (res.ok) {
+          const data = await res.json();
+          setPropositions(data.propositions || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch propositions:', err);
+      }
+    }
+    fetchPropositions();
+  }, [clientId]);
 
   const isCompleted = campaign.status === 'completed';
   const canEdit = isInternal && !isCompleted;
@@ -495,6 +512,31 @@ export function CampaignDetailClient({
                   {campaign.serviceType}
                 </span>
               </p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
+                Propositions
+              </p>
+              <div className="mt-1">
+                {(campaign.propositionRefs || []).length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {campaign.propositionRefs!.map((propId) => {
+                      const prop = propositions.find((p) => p.id === propId);
+                      return (
+                        <span
+                          key={propId}
+                          className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium"
+                          style={{ backgroundColor: '#F0E6F0', color: '#5C3D6E', borderColor: '#D4C4D4' }}
+                        >
+                          {prop?.name || propId}
+                        </span>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm italic text-[var(--muted)]">No propositions linked</p>
+                )}
+              </div>
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
