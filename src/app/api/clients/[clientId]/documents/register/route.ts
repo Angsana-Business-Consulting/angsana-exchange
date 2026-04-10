@@ -10,11 +10,12 @@
 // the managed document model so they appear in Firestore-first browse results.
 //
 // The endpoint:
-//   1. Validates the file exists in the client's Drive tree
-//   2. Fetches file metadata from Drive API
-//   3. Resolves folderCategory + visibility from the client's folderMap
-//   4. Creates a DocumentRegistryEntry with source = 'manual_import'
-//   5. Returns the created registry entry
+//   1. Resolves folderId from folderCategory via the client's folderMap
+//   2. Validates the file exists in the client's Drive tree
+//   3. Fetches file metadata from Drive API
+//   4. Resolves visibility from the managed list template
+//   5. Creates a DocumentRegistryEntry with source = 'manual_import'
+//   6. Returns the created registry entry
 //
 // Access: internal-admin and internal-user only.
 // =============================================================================
@@ -24,7 +25,7 @@ import { adminDb } from '@/lib/firebase/admin';
 import { isFileWithinRoot } from '@/lib/drive/browse';
 import { getDriveClientAsSA, getDriveClient } from '@/lib/drive/client';
 import { getUserFromHeaders, hasClientAccess, isInternal } from '@/lib/api/middleware/user-context';
-import { lookupFolderCategory } from '@/lib/drive/visibility';
+import { getCategoryToFolderMap } from '@/lib/drive/visibility';
 import { getDocumentFolderTemplate } from '@/lib/drive/folder-template-loader';
 import type { FolderMap, FolderVisibility, DocumentFolderItem } from '@/types';
 
@@ -49,7 +50,9 @@ function resolveVisibility(
  *
  * Request body (JSON):
  *   - driveFileId: string — the Google Drive file ID to register
- *   - folderId: string — the Drive folder ID the file resides in
+ *   - folderCategory: string — the canonical folder key (e.g. "targeting", "working")
+ *     The route resolves the actual Drive folderId from the client's folderMap
+ *     so callers don't need to know Drive folder IDs.
  *   - campaignRef (optional): string — related campaign ID
  *
  * Returns the created DocumentRegistryEntry.
@@ -77,7 +80,7 @@ export async function POST(
   }
 
   // ── Parse request body ──────────────────────────────────────────────────
-  let body: { driveFileId?: string; folderId?: string; campaignRef?: string };
+  let body: { driveFileId?: string; folderCategory?: string; campaignRef?: string };
   try {
     body = await request.json();
   } catch {
@@ -87,7 +90,7 @@ export async function POST(
     );
   }
 
-  const { driveFileId, folderId, campaignRef } = body;
+  const { driveFileId, folderCategory, campaignRef } = body;
 
   if (!driveFileId || typeof driveFileId !== 'string' || driveFileId.trim() === '') {
     return NextResponse.json(
@@ -96,9 +99,9 @@ export async function POST(
     );
   }
 
-  if (!folderId || typeof folderId !== 'string' || folderId.trim() === '') {
+  if (!folderCategory || typeof folderCategory !== 'string' || folderCategory.trim() === '') {
     return NextResponse.json(
-      { error: 'Missing required field: folderId', code: 'MISSING_FIELD' },
+      { error: 'Missing required field: folderCategory', code: 'MISSING_FIELD' },
       { status: 400 }
     );
   }
@@ -139,19 +142,22 @@ export async function POST(
     );
   }
 
-  // ── Resolve folderCategory from the folderMap ───────────────────────────
-  const folderInfo = lookupFolderCategory(folderId, folderMap);
+  // ── Resolve folderId from folderCategory via the folderMap ──────────────
+  const categoryMap = getCategoryToFolderMap(folderMap);
+  const folderLookup = categoryMap[folderCategory];
 
-  if (!folderInfo) {
+  if (!folderLookup) {
     return NextResponse.json(
       {
-        error: `Folder ID "${folderId}" is not in this client's folderMap. ` +
-          `Only files in known canonical folders can be registered.`,
-        code: 'UNKNOWN_FOLDER',
+        error: `Folder category "${folderCategory}" is not in this client's folderMap. ` +
+          `Valid categories: ${Object.keys(categoryMap).join(', ')}`,
+        code: 'UNKNOWN_FOLDER_CATEGORY',
       },
       { status: 400 }
     );
   }
+
+  const folderId = folderLookup.folderId;
 
   // ── Check for duplicate registration ────────────────────────────────────
   const existingDocs = await adminDb
@@ -231,7 +237,7 @@ export async function POST(
   let visibility: FolderVisibility = 'internal-only';
   try {
     const template = await getDocumentFolderTemplate(user.tenantId);
-    visibility = resolveVisibility(folderInfo.folderCategory, template);
+    visibility = resolveVisibility(folderCategory, template);
   } catch (err) {
     console.warn('[documents/register] Could not load folder template, defaulting to internal-only:', err);
   }
@@ -243,7 +249,7 @@ export async function POST(
     name: fileMetadata.name,
     mimeType: fileMetadata.mimeType,
     size: fileMetadata.size,
-    folderCategory: folderInfo.folderCategory,
+    folderCategory,
     folderId,
     visibility,
     status: 'active',
