@@ -3,7 +3,7 @@ import { getUserContext, hasClientAccess } from '@/lib/auth/server';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { CampaignTable } from './CampaignTable';
-import type { Campaign } from '@/types';
+import type { Campaign, Proposition } from '@/types';
 
 /**
  * Campaign List Page — /clients/[clientId]/campaigns
@@ -39,15 +39,37 @@ export default async function CampaignsPage({
     ? (clientDoc.data()?.name as string) || clientId
     : clientId;
 
-  // Fetch campaigns
-  const snapshot = await adminDb
-    .collection('tenants')
-    .doc(tenantId)
-    .collection('clients')
-    .doc(clientId)
-    .collection('campaigns')
-    .orderBy('startDate', 'desc')
-    .get();
+  // Fetch campaigns and propositions in parallel
+  const [snapshot, propsSnapshot] = await Promise.all([
+    adminDb
+      .collection('tenants')
+      .doc(tenantId)
+      .collection('clients')
+      .doc(clientId)
+      .collection('campaigns')
+      .orderBy('startDate', 'desc')
+      .get(),
+    adminDb
+      .collection('tenants')
+      .doc(tenantId)
+      .collection('clients')
+      .doc(clientId)
+      .collection('propositions')
+      .get(),
+  ]);
+
+  const propositions: Proposition[] = propsSnapshot.docs.map((doc) => {
+    const d = doc.data();
+    return {
+      id: doc.id,
+      name: d.name || '',
+      description: d.description || '',
+      status: d.status || 'active',
+      category: d.category || '',
+      icpStatus: d.icpStatus || 'draft',
+      icp: d.icp || {},
+    } as Proposition;
+  });
 
   const campaigns: Campaign[] = snapshot.docs.map((doc) => {
     const data = doc.data();
@@ -66,6 +88,7 @@ export default async function CampaignsPage({
       companySize: data.companySize || '',
       valueProposition: data.valueProposition || '',
       painPoints: data.painPoints || [],
+      propositionRefs: data.propositionRefs || [],
       selectedSoWhats: data.selectedSoWhats || [],
       statusHistory: data.statusHistory || [],
       pauseReason: data.pauseReason || '',
@@ -100,7 +123,7 @@ export default async function CampaignsPage({
         )}
       </div>
 
-      <CampaignTable campaigns={campaigns} clientId={clientId} />
+      <CampaignTable campaigns={campaigns} clientId={clientId} propositions={propositions} />
     </div>
   );
 }

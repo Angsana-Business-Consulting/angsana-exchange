@@ -81,6 +81,8 @@ export async function POST(
     owner: body.owner,
     startDate: new Date(body.startDate),
     status: 'draft',
+    // Proposition linkage (optional, required for draft→active)
+    propositionRefs: body.propositionRefs || [],
     // Targeting (optional)
     targetGeographies: body.targetGeographies || [],
     targetSectors: body.targetSectors || [],

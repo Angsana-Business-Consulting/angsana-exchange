@@ -212,6 +212,8 @@ interface CampaignFormProps {
   initialData?: Campaign;
   therapyAreaConfig?: TherapyAreaConfig;
   availableSoWhats?: SoWhat[];
+  /** Pre-populate proposition from URL query param (e.g. ?proposition=xyz) */
+  initialPropositionId?: string;
 }
 
 export function CampaignForm({
@@ -222,6 +224,7 @@ export function CampaignForm({
   initialData,
   therapyAreaConfig,
   availableSoWhats = [],
+  initialPropositionId,
 }: CampaignFormProps) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -232,7 +235,7 @@ export function CampaignForm({
   const [campaignSummary, setCampaignSummary] = useState(initialData?.campaignSummary || '');
   const [serviceTypeId, setServiceTypeId] = useState(initialData?.serviceTypeId || '');
   const [propositionRefs, setPropositionRefs] = useState<string[]>(
-    initialData?.propositionRefs || []
+    initialData?.propositionRefs || (initialPropositionId ? [initialPropositionId] : [])
   );
   const [propositions, setPropositions] = useState<Proposition[]>([]);
   const [owner, setOwner] = useState(initialData?.owner || '');
@@ -540,26 +543,86 @@ export function CampaignForm({
         <Card className="mb-6">
           <CardHeader>
             <CardTitle className="text-base">Targeting</CardTitle>
+            {propositionRefs.length > 0 && (() => {
+              const linkedProps = propositions.filter((p) => propositionRefs.includes(p.id));
+              const hasDraft = linkedProps.some((p) => p.icpStatus === 'draft' || !p.icpStatus);
+              const hasIcp = linkedProps.some((p) => p.icp && (
+                (p.icp.industries?.managedListRefs?.length || 0) > 0 ||
+                (p.icp.titles?.managedListRefs?.length || 0) > 0 ||
+                (p.icp.geographies?.managedListRefs?.length || 0) > 0
+              ));
+              return hasIcp ? (
+                <p className="text-xs text-[var(--muted)] mt-1">
+                  🎯 Targeting options are constrained by the linked proposition{linkedProps.length > 1 ? 's' : ''}&apos; ICP{hasDraft ? '. Some ICPs are in draft — targeting may be incomplete.' : '.'}
+                </p>
+              ) : null;
+            })()}
           </CardHeader>
           <CardContent className="space-y-4">
-            <MultiSelectChips
-              label="Target Geographies"
-              options={managedLists.geographies || []}
-              selected={targetGeographies}
-              onChange={setTargetGeographies}
-            />
-            <MultiSelectChips
-              label="Target Sectors"
-              options={managedLists.sectors || []}
-              selected={targetSectors}
-              onChange={setTargetSectors}
-            />
-            <MultiSelectChips
-              label="Target Titles"
-              options={managedLists.titleBands || []}
-              selected={targetTitles}
-              onChange={setTargetTitles}
-            />
+            {/* Compute merged ICP from linked propositions */}
+            {(() => {
+              const linkedProps = propositions.filter((p) => propositionRefs.includes(p.id));
+              // Merge ICP values across all linked propositions (union)
+              const mergedIcp = {
+                geographies: [...new Set(linkedProps.flatMap((p) => (p.icp?.geographies?.managedListRefs || [])))],
+                industries: [...new Set(linkedProps.flatMap((p) => (p.icp?.industries?.managedListRefs || [])))],
+                titles: [...new Set(linkedProps.flatMap((p) => (p.icp?.titles?.managedListRefs || [])))],
+              };
+              // Filter options: if ICP has values for dimension, constrain; else full list
+              const geoOptions = mergedIcp.geographies.length > 0
+                ? (managedLists.geographies || []).filter((o) => mergedIcp.geographies.includes(o.id))
+                : (managedLists.geographies || []);
+              const sectorOptions = mergedIcp.industries.length > 0
+                ? (managedLists.sectors || []).filter((o) => mergedIcp.industries.includes(o.id))
+                : (managedLists.sectors || []);
+              const titleOptions = mergedIcp.titles.length > 0
+                ? (managedLists.titleBands || []).filter((o) => mergedIcp.titles.includes(o.id))
+                : (managedLists.titleBands || []);
+              const isConstrained = propositionRefs.length > 0;
+              const propNames = linkedProps.map((p) => p.name).join(', ');
+              // Check for out-of-scope values
+              const outOfScopeGeo = isConstrained && mergedIcp.geographies.length > 0
+                ? targetGeographies.filter((v) => !mergedIcp.geographies.includes(v))
+                : [];
+              const outOfScopeSector = isConstrained && mergedIcp.industries.length > 0
+                ? targetSectors.filter((v) => !mergedIcp.industries.includes(v))
+                : [];
+              const outOfScopeTitle = isConstrained && mergedIcp.titles.length > 0
+                ? targetTitles.filter((v) => !mergedIcp.titles.includes(v))
+                : [];
+
+              return (
+                <>
+                  <MultiSelectChips
+                    label={isConstrained && mergedIcp.geographies.length > 0 ? `Target Geographies (from ${propNames} ICP)` : 'Target Geographies'}
+                    options={geoOptions}
+                    selected={targetGeographies}
+                    onChange={setTargetGeographies}
+                  />
+                  {outOfScopeGeo.length > 0 && (
+                    <p className="text-xs text-amber-600">⚠ {outOfScopeGeo.length} value(s) not in the selected proposition&apos;s ICP</p>
+                  )}
+                  <MultiSelectChips
+                    label={isConstrained && mergedIcp.industries.length > 0 ? `Target Sectors (from ${propNames} ICP)` : 'Target Sectors'}
+                    options={sectorOptions}
+                    selected={targetSectors}
+                    onChange={setTargetSectors}
+                  />
+                  {outOfScopeSector.length > 0 && (
+                    <p className="text-xs text-amber-600">⚠ {outOfScopeSector.length} value(s) not in the selected proposition&apos;s ICP</p>
+                  )}
+                  <MultiSelectChips
+                    label={isConstrained && mergedIcp.titles.length > 0 ? `Target Titles (from ${propNames} ICP)` : 'Target Titles'}
+                    options={titleOptions}
+                    selected={targetTitles}
+                    onChange={setTargetTitles}
+                  />
+                  {outOfScopeTitle.length > 0 && (
+                    <p className="text-xs text-amber-600">⚠ {outOfScopeTitle.length} value(s) not in the selected proposition&apos;s ICP</p>
+                  )}
+                </>
+              );
+            })()}
             <div>
               <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">
                 Target Company Size

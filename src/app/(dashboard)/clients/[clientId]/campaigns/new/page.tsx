@@ -12,10 +12,13 @@ import type { ManagedListItem, SoWhat } from '@/types';
  */
 export default async function CampaignNewPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ clientId: string }>;
+  searchParams: Promise<{ proposition?: string }>;
 }) {
   const { clientId } = await params;
+  const { proposition: initialPropositionId } = await searchParams;
   const user = await getUserContext();
   const { tenantId } = user.claims;
 
@@ -131,6 +134,7 @@ export default async function CampaignNewPage({
       managedLists={managedLists}
       therapyAreaConfig={therapyAreaConfig}
       availableSoWhats={availableSoWhats}
+      initialPropositionId={initialPropositionId}
     />
   );
 }

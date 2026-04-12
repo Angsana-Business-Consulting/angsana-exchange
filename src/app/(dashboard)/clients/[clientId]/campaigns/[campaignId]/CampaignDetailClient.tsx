@@ -523,13 +523,22 @@ export function CampaignDetailClient({
                     {campaign.propositionRefs!.map((propId) => {
                       const prop = propositions.find((p) => p.id === propId);
                       return (
-                        <span
+                        <Link
                           key={propId}
-                          className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium"
+                          href={`/clients/${clientId}/prospecting-profile`}
+                          className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium hover:opacity-80 transition-opacity cursor-pointer"
                           style={{ backgroundColor: '#F0E6F0', color: '#5C3D6E', borderColor: '#D4C4D4' }}
+                          title={`View ${prop?.name || 'proposition'} in Prospecting Profile`}
                         >
                           {prop?.name || propId}
-                        </span>
+                          {prop?.icpStatus && (
+                            <span
+                              className="ml-1.5 inline-block h-2 w-2 rounded-full"
+                              style={{ backgroundColor: prop.icpStatus === 'active' ? '#22c55e' : prop.icpStatus === 'draft' ? '#f59e0b' : '#9ca3af' }}
+                              title={`ICP: ${prop.icpStatus}`}
+                            />
+                          )}
+                        </Link>
                       );
                     })}
                   </div>

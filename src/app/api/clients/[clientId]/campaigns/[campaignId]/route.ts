@@ -85,7 +85,7 @@ export async function PUT(
   // Build update object — only include fields that were provided
   const allowedFields = [
     'campaignName', 'campaignSummary', 'serviceType', 'serviceTypeId',
-    'owner', 'startDate', 'targetGeographies', 'targetSectors',
+    'owner', 'startDate', 'propositionRefs', 'targetGeographies', 'targetSectors',
     'targetTitles', 'companySize', 'valueProposition', 'painPoints', 'selectedSoWhats',
   ];
 

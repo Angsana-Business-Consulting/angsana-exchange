@@ -801,6 +801,13 @@ export type FolderMap = Record<string, FolderMapEntry>;
 export type PropositionStatus = 'draft' | 'active' | 'inactive';
 
 /**
+ * ICP readiness status — indicates whether the ICP has been reviewed.
+ * draft = needs attention, active = reviewed and ready.
+ * Not a gate for campaign creation (escape hatch principle).
+ */
+export type ICPStatus = 'draft' | 'active';
+
+/**
  * Proposition document from Firestore.
  * Stored at tenants/{tenantId}/clients/{clientId}/propositions/{propositionId}
  */
@@ -819,6 +826,8 @@ export interface Proposition {
   sortOrder: number;
   /** ICP for this proposition. Same schema as original Slice 8 Section 3.2. Optional. */
   icp?: ICP;
+  /** ICP readiness status: draft (needs attention) or active (reviewed). Default: draft. */
+  icpStatus?: ICPStatus;
   /** Free-text category suggestion from client-approver. Cleared on promotion. */
   suggestedCategory?: string;
   /** UID of creator. */

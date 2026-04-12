@@ -131,6 +131,7 @@ export function ProspectingProfileClient({
 }: Props) {
   const router = useRouter();
   const [propositions, setPropositions] = useState(initialPropositions);
+  const [expandedPropIds, setExpandedPropIds] = useState<Set<string>>(new Set());
   const [profile, setProfile] = useState(initialProfile);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -552,16 +553,213 @@ export function ProspectingProfileClient({
                       </div>
                     </div>
                     {/* Change 6: Campaign cross-link chips (expandable) */}
-                    {linkedCampaigns.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-2 ml-5">
-                        {linkedCampaigns.map((c) => (
-                          <a key={c.id} href={`/clients/${clientId}/campaigns/${c.id}`}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-800 transition-colors">
-                            {c.campaignName}
-                          </a>
-                        ))}
-                      </div>
-                    )}
+                    {/* ICP Summary Line (collapsed view) */}
+                    {(() => {
+                      const icp = p.icp || emptyICP;
+                      const dims: string[] = [];
+                      const maxPerDim = 2;
+                      if (icp.industries.managedListRefs.length > 0) {
+                        const labels = icp.industries.managedListRefs.slice(0, maxPerDim).map((id: string) => resolveLabel(id, managedLists.sectors || []));
+                        if (icp.industries.managedListRefs.length > maxPerDim) labels.push(`+${icp.industries.managedListRefs.length - maxPerDim}`);
+                        dims.push(labels.join(', '));
+                      }
+                      if (icp.titles.managedListRefs.length > 0) {
+                        const labels = icp.titles.managedListRefs.slice(0, maxPerDim).map((id: string) => resolveLabel(id, managedLists.titleBands || []));
+                        if (icp.titles.managedListRefs.length > maxPerDim) labels.push(`+${icp.titles.managedListRefs.length - maxPerDim}`);
+                        dims.push(labels.join(', '));
+                      }
+                      if (icp.geographies.managedListRefs.length > 0) {
+                        const labels = icp.geographies.managedListRefs.slice(0, maxPerDim).map((id: string) => resolveLabel(id, managedLists.geographies || []));
+                        if (icp.geographies.managedListRefs.length > maxPerDim) labels.push(`+${icp.geographies.managedListRefs.length - maxPerDim}`);
+                        dims.push(labels.join(', '));
+                      }
+                      if (icp.companySizing.length > 0) {
+                        dims.push(icp.companySizing.map((s: CompanySizingEntry) => s.label).slice(0, 1).join(', '));
+                      }
+                      const hasIcpData = dims.length > 0;
+                      const isExpanded = expandedPropIds.has(p.id);
+                      const icpStatusDot = p.icpStatus === 'active' ? 'bg-green-500' : p.icpStatus === 'draft' ? 'bg-amber-400' : 'bg-gray-300';
+                      const icpStatusLabel = p.icpStatus === 'active' ? 'ICP: Active' : p.icpStatus === 'draft' ? 'ICP: Draft' : 'No ICP defined';
+                      return (
+                        <>
+                          {/* ICP status dot + summary */}
+                          <div className="flex items-center gap-2 mt-2 ml-5">
+                            <span className={`h-2 w-2 rounded-full ${icpStatusDot}`} title={icpStatusLabel} />
+                            {hasIcpData ? (
+                              <span className="text-xs text-gray-500 truncate">{dims.join(' · ')}</span>
+                            ) : (
+                              <span className="text-xs text-gray-400 italic">
+                                No ICP defined —{' '}
+                                <button type="button" className="text-[#004156] hover:underline font-medium"
+                                  onClick={() => setExpandedPropIds((prev) => { const next = new Set(prev); next.add(p.id); return next; })}>
+                                  Define ICP
+                                </button>
+                              </span>
+                            )}
+                            {linkedCampaigns.length > 0 && (
+                              <button type="button"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#E1F5EE] text-[#085041] hover:bg-[#C9EDE0] transition-colors ml-auto"
+                                onClick={() => setExpandedPropIds((prev) => { const next = new Set(prev); if (next.has(p.id)) next.delete(p.id); else next.add(p.id); return next; })}>
+                                <Link2 className="h-3 w-3" /> {linkedCampaigns.length} campaign{linkedCampaigns.length > 1 ? 's' : ''}
+                              </button>
+                            )}
+                            <button type="button" className="ml-auto text-gray-400 hover:text-gray-600 p-0.5"
+                              onClick={() => setExpandedPropIds((prev) => { const next = new Set(prev); if (next.has(p.id)) next.delete(p.id); else next.add(p.id); return next; })}>
+                              {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            </button>
+                          </div>
+
+                          {/* ─── EXPANDED: ICP Details + Campaigns ─── */}
+                          {isExpanded && (
+                            <div className="mt-3 ml-5 border-t border-gray-100 pt-3 space-y-4">
+                              {/* ICP Section */}
+                              {editingIcpPropId === p.id ? (
+                                /* ICP EDIT MODE — inline */
+                                <div className="space-y-4">
+                                  <div>
+                                    <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Industries</label>
+                                    <select multiple className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm min-h-[80px]"
+                                      value={icpDraft.industries.managedListRefs}
+                                      onChange={(e) => { const vals = Array.from(e.target.selectedOptions, (o: HTMLOptionElement) => o.value); setIcpDraft({ ...icpDraft, industries: { ...icpDraft.industries, managedListRefs: vals } }); }}>
+                                      {(managedLists.sectors || []).filter((s: ManagedListItem) => s.active).map((s: ManagedListItem) => (
+                                        <option key={s.id} value={s.id}>{s.label}</option>
+                                      ))}
+                                    </select>
+                                    <textarea className="w-full mt-2 rounded-lg border border-gray-200 bg-[#F5F9FA] px-3 py-2 text-sm italic placeholder:text-gray-400"
+                                      placeholder="Add details or suggest values not in the list above." rows={2} maxLength={500}
+                                      value={icpDraft.industries.specifics}
+                                      onChange={(e) => setIcpDraft({ ...icpDraft, industries: { ...icpDraft.industries, specifics: e.target.value } })} />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Target Titles</label>
+                                    <select multiple className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm min-h-[80px]"
+                                      value={icpDraft.titles.managedListRefs}
+                                      onChange={(e) => { const vals = Array.from(e.target.selectedOptions, (o: HTMLOptionElement) => o.value); setIcpDraft({ ...icpDraft, titles: { ...icpDraft.titles, managedListRefs: vals } }); }}>
+                                      {(managedLists.titleBands || []).filter((t: ManagedListItem) => t.active).map((t: ManagedListItem) => (
+                                        <option key={t.id} value={t.id}>{t.label}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Geographies</label>
+                                    <select multiple className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm min-h-[80px]"
+                                      value={icpDraft.geographies.managedListRefs}
+                                      onChange={(e) => { const vals = Array.from(e.target.selectedOptions, (o: HTMLOptionElement) => o.value); setIcpDraft({ ...icpDraft, geographies: { ...icpDraft.geographies, managedListRefs: vals } }); }}>
+                                      {(managedLists.geographies || []).filter((g: ManagedListItem) => g.active).map((g: ManagedListItem) => (
+                                        <option key={g.id} value={g.id}>{g.label}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Buying Process</label>
+                                    <select className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+                                      value={icpDraft.buyingProcess.type}
+                                      onChange={(e) => setIcpDraft({ ...icpDraft, buyingProcess: { ...icpDraft.buyingProcess, type: e.target.value as BuyingProcessType } })}>
+                                      <option value="">Select…</option>
+                                      {Object.entries(BUYING_PROCESS_CONFIG).map(([k, v]) => (
+                                        <option key={k} value={k}>{v.label}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div className="flex gap-2 pt-2">
+                                    <button type="button" disabled={saving}
+                                      className="px-4 py-1.5 rounded-full text-sm font-medium text-white bg-[#004156] hover:bg-[#003040] disabled:opacity-50"
+                                      onClick={() => savePropositionICP(p.id)}>
+                                      {saving ? 'Saving…' : 'Save ICP'}
+                                    </button>
+                                    <button type="button" className="px-4 py-1.5 rounded-full text-sm font-medium text-gray-600 bg-gray-200 hover:bg-gray-300"
+                                      onClick={() => { setEditingIcpPropId(null); setIcpDraft(emptyICP); }}>
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                /* ICP READ MODE — inline */
+                                <div className="space-y-3">
+                                  <div className="flex items-center justify-between">
+                                    <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Ideal Client Profile</h4>
+                                    {p.icpStatus && isInternal(userRole) && (
+                                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${p.icpStatus === 'active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                        ICP {p.icpStatus}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {icp.industries.managedListRefs.length > 0 && (
+                                    <div>
+                                      <h5 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Industries</h5>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {icp.industries.managedListRefs.map((id: string) => <TagPill key={id} label={resolveLabel(id, managedLists.sectors || [])} />)}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {icp.titles.managedListRefs.length > 0 && (
+                                    <div>
+                                      <h5 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Target Titles</h5>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {icp.titles.managedListRefs.map((id: string) => <TagPill key={id} label={resolveLabel(id, managedLists.titleBands || [])} />)}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {icp.geographies.managedListRefs.length > 0 && (
+                                    <div>
+                                      <h5 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Geographies</h5>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {icp.geographies.managedListRefs.map((id: string) => <TagPill key={id} label={resolveLabel(id, managedLists.geographies || [])} />)}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {icp.companySizing.length > 0 && (
+                                    <div>
+                                      <h5 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Company Sizing</h5>
+                                      {icp.companySizing.map((s: CompanySizingEntry, i: number) => (
+                                        <div key={i} className="text-sm text-gray-700"><span className="font-medium">{s.label}:</span> {s.values.join(', ')}</div>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {icp.buyingProcess.type && (
+                                    <div>
+                                      <h5 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Buying Process</h5>
+                                      <p className="text-sm text-gray-700">{BUYING_PROCESS_CONFIG[icp.buyingProcess.type as BuyingProcessType]?.label || icp.buyingProcess.type}</p>
+                                    </div>
+                                  )}
+                                  {!hasIcpData && <p className="text-sm text-gray-400 italic">No ICP data defined yet.</p>}
+                                  {canEditICP(userRole) && (
+                                    <button type="button" className="flex items-center gap-1.5 text-sm font-medium text-[#004156] hover:text-[#003040]"
+                                      onClick={() => { setIcpDraft(p.icp || emptyICP); setEditingIcpPropId(p.id); }}>
+                                      <Edit2 className="h-3.5 w-3.5" /> {hasIcpData ? 'Edit ICP' : 'Define ICP'}
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Campaigns Section */}
+                              <div className="border-t border-gray-100 pt-3">
+                                <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
+                                  Campaigns {linkedCampaigns.length > 0 && <span className="text-gray-400 normal-case">({linkedCampaigns.length})</span>}
+                                </h4>
+                                {linkedCampaigns.length > 0 ? (
+                                  <div className="space-y-1.5">
+                                    {linkedCampaigns.map((c) => (
+                                      <a key={c.id} href={`/clients/${clientId}/campaigns/${c.id}`}
+                                        className="flex items-center justify-between rounded-md px-3 py-2 hover:bg-gray-50 transition-colors group">
+                                        <span className="text-sm text-gray-700 group-hover:text-[#004156]">{c.campaignName}</span>
+                                        <StatusBadge {...(PROPOSITION_STATUS_CONFIG[c.status as keyof typeof PROPOSITION_STATUS_CONFIG] || { label: c.status, colour: '#666', bgColour: '#f0f0f0' })} />
+                                      </a>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-gray-400 italic">No campaigns linked to this proposition</p>
+                                )}
+                                <a href={`/clients/${clientId}/campaigns/new?proposition=${p.id}`}
+                                  className="flex items-center gap-1.5 text-sm font-medium text-[#004156] hover:text-[#003040] mt-2">
+                                  <Plus className="h-4 w-4" /> Create Campaign
+                                </a>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                   );
                 })}
@@ -751,257 +949,7 @@ export function ProspectingProfileClient({
         </div>
       </SectionCard>
 
-      {/* ── 2. Ideal Client Profile (per-proposition) ──────────────────── */}
-      <SectionCard
-        title="Ideal Client Profile"
-        count={propositions.filter((p) => p.status === 'active' && p.icp).length}
-        lastUpdated={propositions.reduce((latest, p) => {
-          const d = p.icp?.lastUpdatedAt || '';
-          return d > latest ? d : latest;
-        }, '')}
-      >
-        <div className="mt-4 space-y-6">
-          {propositions.length === 0 && (
-            <p className="text-sm text-gray-400 italic">Add propositions first, then define an ICP for each.</p>
-          )}
-
-          {propositions.map((prop) => {
-            const icp = prop.icp || emptyICP;
-            const isEditing = editingIcpPropId === prop.id;
-            const hasData = icp.industries.managedListRefs.length > 0 || icp.companySizing.length > 0 ||
-              icp.titles.managedListRefs.length > 0 || icp.buyingProcess.type ||
-              icp.geographies.managedListRefs.length > 0 || icp.exclusions.length > 0;
-
-            return (
-              <div key={prop.id} className="rounded-lg border border-gray-200 px-4 py-3">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className={`h-2 w-2 rounded-full ${prop.status === 'active' ? 'bg-green-500' : 'bg-gray-300'}`} />
-                    <h3 className="text-sm font-semibold text-gray-900">{prop.name}</h3>
-                  </div>
-                  {icp.lastUpdatedAt && (
-                    <span className="text-xs text-gray-400">Updated {formatDate(icp.lastUpdatedAt)}</span>
-                  )}
-                </div>
-
-                {isEditing ? (
-                  /* ─── ICP EDIT MODE (per-proposition) ─── */
-                  <div className="space-y-4 mt-3">
-                    <div>
-                      <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Industries</label>
-                      <select multiple className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm min-h-[80px]"
-                        value={icpDraft.industries.managedListRefs}
-                        onChange={(e) => {
-                          const vals = Array.from(e.target.selectedOptions, (o: HTMLOptionElement) => o.value);
-                          setIcpDraft({ ...icpDraft, industries: { ...icpDraft.industries, managedListRefs: vals } });
-                        }}>
-                        {(managedLists.sectors || []).filter((s: ManagedListItem) => s.active).map((s: ManagedListItem) => (
-                          <option key={s.id} value={s.id}>{s.label}</option>
-                        ))}
-                      </select>
-                      <textarea className="w-full mt-2 rounded-lg border border-gray-200 bg-[#F5F9FA] px-3 py-2 text-sm italic placeholder:text-gray-400"
-                        placeholder="Add details or suggest values not in the list above." rows={2} maxLength={500}
-                        value={icpDraft.industries.specifics}
-                        onChange={(e) => setIcpDraft({ ...icpDraft, industries: { ...icpDraft.industries, specifics: e.target.value } })} />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Company Sizing</label>
-                      {icpDraft.companySizing.map((entry: CompanySizingEntry, i: number) => (
-                        <div key={i} className="flex items-center gap-2 mt-2 rounded-lg border border-gray-200 px-3 py-2">
-                          <input className="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm" placeholder="Label"
-                            value={entry.label} onChange={(e) => {
-                              const updated = [...icpDraft.companySizing]; const label = e.target.value;
-                              let type = entry.type;
-                              if (label.toLowerCase().includes('revenue')) type = 'revenue';
-                              else if (label.toLowerCase().includes('headcount') || label.toLowerCase().includes('employees')) type = 'headcount';
-                              else if (label.toLowerCase().includes('tier')) type = 'tier';
-                              else type = 'custom';
-                              updated[i] = { ...entry, label, type }; setIcpDraft({ ...icpDraft, companySizing: updated });
-                            }} />
-                          <input className="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm" placeholder="Values (comma-separated)"
-                            value={entry.values.join(', ')} onChange={(e) => {
-                              const updated = [...icpDraft.companySizing];
-                              updated[i] = { ...entry, values: e.target.value.split(',').map((v: string) => v.trim()).filter(Boolean) };
-                              setIcpDraft({ ...icpDraft, companySizing: updated });
-                            }} />
-                          <button type="button" className="text-red-400 hover:text-red-600" onClick={() => {
-                            setIcpDraft({ ...icpDraft, companySizing: icpDraft.companySizing.filter((_: CompanySizingEntry, j: number) => j !== i) });
-                          }}><X className="h-4 w-4" /></button>
-                        </div>
-                      ))}
-                      <button type="button" className="mt-2 text-sm text-[#004156] hover:underline flex items-center gap-1"
-                        onClick={() => setIcpDraft({ ...icpDraft, companySizing: [...icpDraft.companySizing, { type: 'custom', label: '', values: [] }] })}>
-                        <Plus className="h-3.5 w-3.5" /> Add sizing criteria
-                      </button>
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Target Titles</label>
-                      <select multiple className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm min-h-[80px]"
-                        value={icpDraft.titles.managedListRefs}
-                        onChange={(e) => {
-                          const vals = Array.from(e.target.selectedOptions, (o: HTMLOptionElement) => o.value);
-                          setIcpDraft({ ...icpDraft, titles: { ...icpDraft.titles, managedListRefs: vals } });
-                        }}>
-                        {(managedLists.titleBands || []).filter((t: ManagedListItem) => t.active).map((t: ManagedListItem) => (
-                          <option key={t.id} value={t.id}>{t.label}</option>
-                        ))}
-                      </select>
-                      <textarea className="w-full mt-2 rounded-lg border border-gray-200 bg-[#F5F9FA] px-3 py-2 text-sm italic placeholder:text-gray-400"
-                        placeholder="Add details or suggest values not in the list above." rows={2} maxLength={500}
-                        value={icpDraft.titles.specifics}
-                        onChange={(e) => setIcpDraft({ ...icpDraft, titles: { ...icpDraft.titles, specifics: e.target.value } })} />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Buying Process</label>
-                      <select className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm"
-                        value={icpDraft.buyingProcess.type}
-                        onChange={(e) => setIcpDraft({ ...icpDraft, buyingProcess: { ...icpDraft.buyingProcess, type: e.target.value as BuyingProcessType } })}>
-                        <option value="">Select…</option>
-                        {Object.entries(BUYING_PROCESS_CONFIG).map(([k, v]) => (
-                          <option key={k} value={k}>{v.label}</option>
-                        ))}
-                      </select>
-                      <textarea className="w-full mt-2 rounded-lg border border-gray-200 bg-[#F5F9FA] px-3 py-2 text-sm italic placeholder:text-gray-400"
-                        placeholder="Notes on buying process" rows={2} maxLength={500}
-                        value={icpDraft.buyingProcess.notes}
-                        onChange={(e) => setIcpDraft({ ...icpDraft, buyingProcess: { ...icpDraft.buyingProcess, notes: e.target.value } })} />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Geographies</label>
-                      <select multiple className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm min-h-[80px]"
-                        value={icpDraft.geographies.managedListRefs}
-                        onChange={(e) => {
-                          const vals = Array.from(e.target.selectedOptions, (o: HTMLOptionElement) => o.value);
-                          setIcpDraft({ ...icpDraft, geographies: { ...icpDraft.geographies, managedListRefs: vals } });
-                        }}>
-                        {(managedLists.geographies || []).filter((g: ManagedListItem) => g.active).map((g: ManagedListItem) => (
-                          <option key={g.id} value={g.id}>{g.label}</option>
-                        ))}
-                      </select>
-                      <textarea className="w-full mt-2 rounded-lg border border-gray-200 bg-[#F5F9FA] px-3 py-2 text-sm italic placeholder:text-gray-400"
-                        placeholder="Add details or suggest values not in the list above." rows={2} maxLength={500}
-                        value={icpDraft.geographies.specifics}
-                        onChange={(e) => setIcpDraft({ ...icpDraft, geographies: { ...icpDraft.geographies, specifics: e.target.value } })} />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Exclusions</label>
-                      {icpDraft.exclusions.map((exc: ICPExclusion, i: number) => (
-                        <div key={i} className="flex items-center gap-2 mt-2">
-                          <select className="rounded-md border border-gray-300 px-2 py-1 text-sm" value={exc.category}
-                            onChange={(e) => { const updated = [...icpDraft.exclusions]; updated[i] = { ...exc, category: e.target.value }; setIcpDraft({ ...icpDraft, exclusions: updated }); }}>
-                            <option value="">Category…</option>
-                            <option value="company size">Company Size</option><option value="sector">Sector</option>
-                            <option value="geography">Geography</option><option value="other">Other</option>
-                          </select>
-                          <input className="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm" placeholder="Description" maxLength={280}
-                            value={exc.description} onChange={(e) => { const updated = [...icpDraft.exclusions]; updated[i] = { ...exc, description: e.target.value }; setIcpDraft({ ...icpDraft, exclusions: updated }); }} />
-                          <button type="button" className="text-red-400 hover:text-red-600" onClick={() => {
-                            setIcpDraft({ ...icpDraft, exclusions: icpDraft.exclusions.filter((_: ICPExclusion, j: number) => j !== i) });
-                          }}><X className="h-4 w-4" /></button>
-                        </div>
-                      ))}
-                      <button type="button" className="mt-2 text-sm text-[#004156] hover:underline flex items-center gap-1"
-                        onClick={() => setIcpDraft({ ...icpDraft, exclusions: [...icpDraft.exclusions, { category: '', description: '' }] })}>
-                        <Plus className="h-3.5 w-3.5" /> Add exclusion
-                      </button>
-                    </div>
-                    <div className="flex gap-2 pt-2">
-                      <button type="button" disabled={saving}
-                        className="px-4 py-1.5 rounded-full text-sm font-medium text-white bg-[#004156] hover:bg-[#003040] disabled:opacity-50"
-                        onClick={() => savePropositionICP(prop.id)}>
-                        {saving ? 'Saving…' : 'Save ICP'}
-                      </button>
-                      <button type="button" className="px-4 py-1.5 rounded-full text-sm font-medium text-gray-600 bg-gray-200 hover:bg-gray-300"
-                        onClick={() => { setEditingIcpPropId(null); setIcpDraft(emptyICP); }}>
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  /* ─── ICP READ MODE (per-proposition) ─── */
-                  <div className="space-y-3 mt-1">
-                    {icp.industries.managedListRefs.length > 0 && (
-                      <div>
-                        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Industries</h4>
-                        <div className="flex flex-wrap gap-1.5">
-                          {icp.industries.managedListRefs.map((id: string) => (
-                            <TagPill key={id} label={resolveLabel(id, managedLists.sectors || [])} />
-                          ))}
-                        </div>
-                        {icp.industries.specifics && (
-                          <p className="text-sm text-gray-600 mt-1 bg-[#F5F9FA] rounded-lg px-3 py-2 italic">{icp.industries.specifics}</p>
-                        )}
-                      </div>
-                    )}
-                    {icp.companySizing.length > 0 && (
-                      <div>
-                        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Company Sizing</h4>
-                        {icp.companySizing.map((s: CompanySizingEntry, i: number) => (
-                          <div key={i} className="text-sm text-gray-700 mt-1"><span className="font-medium">{s.label}:</span> {s.values.join(', ')}</div>
-                        ))}
-                      </div>
-                    )}
-                    {icp.titles.managedListRefs.length > 0 && (
-                      <div>
-                        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Target Titles</h4>
-                        <div className="flex flex-wrap gap-1.5">
-                          {icp.titles.managedListRefs.map((id: string) => (
-                            <TagPill key={id} label={resolveLabel(id, managedLists.titleBands || [])} />
-                          ))}
-                        </div>
-                        {icp.titles.specifics && (
-                          <p className="text-sm text-gray-600 mt-1 bg-[#F5F9FA] rounded-lg px-3 py-2 italic">{icp.titles.specifics}</p>
-                        )}
-                      </div>
-                    )}
-                    {icp.buyingProcess.type && (
-                      <div>
-                        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Buying Process</h4>
-                        <p className="text-sm text-gray-700">{BUYING_PROCESS_CONFIG[icp.buyingProcess.type as BuyingProcessType]?.label || icp.buyingProcess.type}</p>
-                        {icp.buyingProcess.notes && (
-                          <p className="text-sm text-gray-600 mt-1 bg-[#F5F9FA] rounded-lg px-3 py-2 italic">{icp.buyingProcess.notes}</p>
-                        )}
-                      </div>
-                    )}
-                    {icp.geographies.managedListRefs.length > 0 && (
-                      <div>
-                        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Geographies</h4>
-                        <div className="flex flex-wrap gap-1.5">
-                          {icp.geographies.managedListRefs.map((id: string) => (
-                            <TagPill key={id} label={resolveLabel(id, managedLists.geographies || [])} />
-                          ))}
-                        </div>
-                        {icp.geographies.specifics && (
-                          <p className="text-sm text-gray-600 mt-1 bg-[#F5F9FA] rounded-lg px-3 py-2 italic">{icp.geographies.specifics}</p>
-                        )}
-                      </div>
-                    )}
-                    {icp.exclusions.length > 0 && (
-                      <div>
-                        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Exclusions</h4>
-                        {icp.exclusions.map((exc: ICPExclusion, i: number) => (
-                          <div key={i} className="text-sm text-gray-700 mt-1"><span className="font-medium capitalize">{exc.category}:</span> {exc.description}</div>
-                        ))}
-                      </div>
-                    )}
-                    {!hasData && (
-                      <p className="text-sm text-gray-400 italic">No ICP data defined for this proposition.</p>
-                    )}
-                    {canEditICP(userRole) && (
-                      <button type="button" className="flex items-center gap-1.5 text-sm font-medium text-[#004156] hover:text-[#003040]"
-                        onClick={() => { setIcpDraft(prop.icp || emptyICP); setEditingIcpPropId(prop.id); }}>
-                        <Edit2 className="h-3.5 w-3.5" /> {hasData ? 'Edit ICP' : 'Define ICP'}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </SectionCard>
-
-      {/* ── 3. Market Messaging Library ─────────────────────────────────── */}
+      {/* ── 2. Market Messaging Library ─────────────────────────────────── */}
       <SectionCard
         title="Market Messaging Library"
         count={profile.marketMessaging.length}
@@ -1170,7 +1118,7 @@ export function ProspectingProfileClient({
         </div>
       </SectionCard>
 
-      {/* ── 4. Angsana Recommendations (internal only) ─────────────────── */}
+      {/* ── 3. Angsana Recommendations (internal only) ─────────────────── */}
       {isInternal(userRole) && (
         <SectionCard
           title="Angsana Recommendations"
@@ -1295,7 +1243,7 @@ export function ProspectingProfileClient({
         </SectionCard>
       )}
 
-      {/* ── 5. AI Review (internal only, placeholder) ──────────────────── */}
+      {/* ── 4. AI Review (internal only, placeholder) ──────────────────── */}
       {isInternal(userRole) && (
         <SectionCard
           title="AI Review"

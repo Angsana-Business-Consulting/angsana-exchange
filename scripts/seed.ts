@@ -418,6 +418,7 @@ async function seedFirestore() {
         serviceTypeId: 'lg-new',
         owner: 'Mike Cole',
         startDate: Timestamp.fromDate(new Date('2025-12-18')),
+        propositionRefs: ['retail-pos'],
         campaignSummary:
           'Targeting CTO/CIO/Digital leaders at fashion and luxury retailers in Spain and Portugal for Cegid unified commerce platform.',
         // Targeting (Slice 2)
@@ -453,6 +454,7 @@ async function seedFirestore() {
         serviceTypeId: 'lg-new',
         owner: 'Mike Cole',
         startDate: Timestamp.fromDate(new Date('2026-01-15')),
+        propositionRefs: ['retail-pos'],
         campaignSummary:
           'Same proposition targeting outdoor, sportswear, and activewear retailers across Iberia.',
         // Targeting (Slice 2)
@@ -487,6 +489,7 @@ async function seedFirestore() {
         serviceTypeId: 'event',
         owner: 'Deborah Rey',
         startDate: Timestamp.fromDate(new Date('2026-02-20')),
+        propositionRefs: ['retail-pos', 'erp-solutions'],
         campaignSummary:
           'Follow-up outreach to attendees of the 2026 Retail Forum event. Speaker-led content positioning.',
         // Targeting (Slice 2)
@@ -887,6 +890,7 @@ async function seedFirestore() {
         category: 'technology',
         description: 'Enterprise resource planning for mid-market retailers and fashion brands.',
         status: 'active',
+        icpStatus: 'active',
         sortOrder: 0,
         icp: {
           industries: {
@@ -928,6 +932,7 @@ async function seedFirestore() {
         category: 'technology',
         description: 'Point of sale solutions for multi-site retail operations.',
         status: 'active',
+        icpStatus: 'active',
         sortOrder: 1,
         icp: {
           industries: {
@@ -967,6 +972,7 @@ async function seedFirestore() {
         category: 'technology',
         description: 'Cloud HR and payroll management for mid-market enterprises.',
         status: 'active',
+        icpStatus: 'draft',
         sortOrder: 2,
         icp: null,  // No ICP yet — tests empty/null state
         createdBy: 'keith@angsana.com',

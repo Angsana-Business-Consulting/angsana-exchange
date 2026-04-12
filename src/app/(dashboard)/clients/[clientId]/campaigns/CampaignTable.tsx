@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import type { Campaign } from '@/types';
+import type { Campaign, Proposition } from '@/types';
 import { CAMPAIGN_STATUS_CONFIG } from '@/types';
 
 /**
@@ -45,9 +45,11 @@ type StatusFilter = 'all' | Campaign['status'];
 export function CampaignTable({
   campaigns,
   clientId,
+  propositions = [],
 }: {
   campaigns: Campaign[];
   clientId: string;
+  propositions?: Proposition[];
 }) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
@@ -116,6 +118,24 @@ export function CampaignTable({
                   >
                     {campaign.campaignName}
                   </Link>
+                  {(campaign.propositionRefs || []).length > 0 && (
+                    <div className="mt-0.5 flex flex-wrap gap-1">
+                      {campaign.propositionRefs!.map((propId) => {
+                        const prop = propositions.find((p) => p.id === propId);
+                        return (
+                          <Link
+                            key={propId}
+                            href={`/clients/${clientId}/prospecting-profile`}
+                            className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium hover:opacity-80 transition-opacity"
+                            style={{ backgroundColor: '#F0E6F0', color: '#5C3D6E' }}
+                            title={`Proposition: ${prop?.name || propId}`}
+                          >
+                            {prop?.name || propId}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
                 </td>
                 <td className="px-6 py-4">
                   <StatusBadge status={campaign.status} />
