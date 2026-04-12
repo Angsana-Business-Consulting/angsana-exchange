@@ -307,7 +307,7 @@ export function CheckInEditForm({
   checkin,
   linkedActions,
   clientId,
-  clientName: _clientName,
+  clientName: _clientName, // eslint-disable-line @typescript-eslint/no-unused-vars -- passed by parent, reserved for future use
   campaigns,
 }: {
   checkin: CheckIn;

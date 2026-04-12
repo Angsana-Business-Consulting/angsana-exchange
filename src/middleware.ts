@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { adminAuth } from '@/lib/firebase/admin';
+import { logger, SVC_AUTH } from '@/lib/logging';
 
 /**
  * Force Node.js runtime — firebase-admin requires Node.js APIs
@@ -45,6 +46,16 @@ export async function middleware(request: NextRequest) {
   }
 
   if (!token) {
+    // Security log: unauthenticated request to protected route
+    logger.warn(SVC_AUTH, 'middlewareNoToken',
+      `No auth token for ${request.method} ${pathname}`, {
+        path: pathname,
+        method: request.method,
+        ip: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown',
+        userAgent: (request.headers.get('user-agent') || '').slice(0, 200),
+        isApiRoute,
+      });
+
     if (isApiRoute) {
       return NextResponse.json(
         { error: 'Authentication required. Provide a session cookie or Authorization: Bearer token.', code: 'UNAUTHORIZED' },
@@ -79,7 +90,20 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next({
       request: { headers: requestHeaders },
     });
-  } catch {
+  } catch (err) {
+    // Security log: invalid/expired token — could be session expiry or probe
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    logger.error(SVC_AUTH, 'middlewareInvalidToken',
+      `Invalid token for ${request.method} ${pathname}: ${errorMsg}`, {
+        path: pathname,
+        method: request.method,
+        ip: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown',
+        userAgent: (request.headers.get('user-agent') || '').slice(0, 200),
+        isApiRoute,
+        // Truncated token prefix for correlation (never log full tokens)
+        tokenPrefix: token ? `${token.slice(0, 10)}...` : 'empty',
+      });
+
     if (isApiRoute) {
       return NextResponse.json(
         { error: 'Invalid or expired authentication token.', code: 'UNAUTHORIZED' },

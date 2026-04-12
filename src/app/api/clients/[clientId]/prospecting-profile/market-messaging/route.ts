@@ -58,6 +58,7 @@ export async function PATCH(
     let entries = body.marketMessaging;
     if (!isInternal(user.role)) {
       entries = entries.map((entry: Record<string, unknown>) => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { notes: _notes, ...rest } = entry;
         return rest;
       });

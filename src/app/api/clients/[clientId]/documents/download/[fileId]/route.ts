@@ -27,7 +27,7 @@ import { Readable } from 'stream';
 import { adminDb } from '@/lib/firebase/admin';
 import { downloadDriveFile } from '@/lib/drive/download';
 import { isFileWithinRoot } from '@/lib/drive/browse';
-import { getUserFromHeaders, hasClientAccess, isInternal, isClientApprover } from '@/lib/api/middleware/user-context';
+import { getUserFromHeaders, hasClientAccess, isInternal } from '@/lib/api/middleware/user-context';
 import type { FolderMap } from '@/types';
 
 export const runtime = 'nodejs';
