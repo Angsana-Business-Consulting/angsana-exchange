@@ -474,21 +474,21 @@ export function CampaignForm({
 
   return (
     <div className="max-w-3xl">
-      {/* Sticky sub-header */}
-      <div className="sticky top-0 z-10 bg-gray-50 pb-4 -mx-6 px-6 -mt-6 pt-6 border-b border-gray-200 mb-6">
+      {/* Sub-header */}
+      <div className="sticky top-[-1.5rem] z-10 bg-gray-50 -mx-6 px-6 pt-4 pb-3 border-b border-gray-200 mb-4">
         <Link
           href={
             mode === 'edit'
               ? `/clients/${clientId}/campaigns/${initialData!.id}`
               : `/clients/${clientId}/campaigns`
           }
-          className="mb-2 inline-flex items-center gap-1 text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
+          className="mb-1 inline-flex items-center gap-1 text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
         >
           <ArrowLeft className="h-4 w-4" />
           {mode === 'edit' ? 'Back to campaign' : `Back to ${clientName} campaigns`}
         </Link>
 
-        <h1 className="text-2xl font-bold text-[var(--foreground)]">
+        <h1 className="text-xl font-bold text-[var(--foreground)]">
           {mode === 'create' ? 'New Campaign' : `Edit: ${initialData!.campaignName}`}
         </h1>
       </div>
