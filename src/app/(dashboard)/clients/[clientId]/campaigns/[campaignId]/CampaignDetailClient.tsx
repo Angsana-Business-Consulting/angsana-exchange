@@ -621,8 +621,10 @@ export function CampaignDetailClient({
         </div>
       )}
 
-      {/* Sub-header — full width, outside max-w constraint */}
-      <div className="sticky top-0 z-30 bg-white -mx-6 -mt-6 px-6 pb-3 pt-4 border-b border-gray-200 mb-6">
+      {/* Full-bleed wrapper — negates main's p-6 so sub-header sits outside the padded area */}
+      <div className="-m-6">
+      {/* Sub-header — naturally at top, full width, pure CSS sticky with no negative-margin hacks */}
+      <div className="sticky top-0 z-30 bg-white px-6 pb-3 pt-4 border-b border-gray-200">
         <Link
           href={`/clients/${clientId}/campaigns`}
           className="mb-1 inline-flex items-center gap-1 text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
@@ -657,6 +659,8 @@ export function CampaignDetailClient({
         </div>
       </div>
 
+      {/* Content area — restore padding that -m-6 wrapper negated */}
+      <div className="p-6">
     <div className="max-w-4xl">
 
       {/* Status actions — for internal users, non-completed campaigns */}
@@ -1030,6 +1034,8 @@ export function CampaignDetailClient({
       {/* Status History */}
       <StatusTimeline history={campaign.statusHistory} />
     </div>
+    </div>{/* end p-6 */}
+    </div>{/* end -m-6 */}
     </>
   );
 }
