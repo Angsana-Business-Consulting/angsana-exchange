@@ -492,8 +492,55 @@ export function ProspectingProfileClient({
               <div className="space-y-2">
                 {props.map((p) => {
                   const linkedCampaigns = campaigns.filter((c) => c.propositionRefs?.includes(p.id));
+                  const isEditingThisProp = editingPropId === p.id && showPropForm;
                   return (
                   <div key={p.id} className="rounded-lg border border-gray-200 px-4 py-3">
+                    {isEditingThisProp && canEditPropositions(userRole) ? (
+                      /* ─── INLINE PROPOSITION EDIT FORM ─── */
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-xs font-medium text-gray-600">Name</label>
+                          <div className="flex items-center gap-2">
+                            <input className="flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+                              value={propForm.name} maxLength={80}
+                              onChange={(e) => setPropForm({ ...propForm, name: e.target.value })}
+                              placeholder="E.g. MedEd/MedComms, Performance Marketing" />
+                            <span className="text-xs text-gray-400">{propForm.name.length}/80</span>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-600">Category</label>
+                          <select className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+                            value={propForm.category}
+                            onChange={(e) => setPropForm({ ...propForm, category: e.target.value })}>
+                            <option value="">Select category…</option>
+                            {categories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-600">Description</label>
+                          <div className="flex items-center gap-2">
+                            <textarea className="flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm" rows={2}
+                              value={propForm.description} maxLength={280}
+                              onChange={(e) => setPropForm({ ...propForm, description: e.target.value })}
+                              placeholder="Additional context" />
+                            <span className="text-xs text-gray-400">{propForm.description.length}/280</span>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button type="button" disabled={saving || !propForm.name.trim()}
+                            className="px-4 py-1.5 rounded-full text-sm font-medium text-white bg-[#004156] hover:bg-[#003040] disabled:opacity-50"
+                            onClick={() => saveProp(true)}>
+                            {saving ? 'Saving…' : 'Update'}
+                          </button>
+                          <button type="button" className="px-4 py-1.5 rounded-full text-sm font-medium text-gray-600 bg-gray-200 hover:bg-gray-300"
+                            onClick={() => { setShowPropForm(false); setEditingPropId(null); setPropForm({ name: '', category: '', description: '' }); }}>
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                    <>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <span className={`h-2 w-2 rounded-full ${p.status === 'active' ? 'bg-green-500' : p.status === 'draft' ? 'bg-amber-400' : 'bg-gray-300'}`} />
@@ -514,12 +561,6 @@ export function ProspectingProfileClient({
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        {/* Change 6: Campaign cross-link count */}
-                        {linkedCampaigns.length > 0 && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-indigo-50 text-indigo-700" title={linkedCampaigns.map((c) => c.campaignName).join(', ')}>
-                            <Link2 className="h-3 w-3" /> {linkedCampaigns.length} campaign{linkedCampaigns.length > 1 ? 's' : ''}
-                          </span>
-                        )}
                         <StatusBadge {...PROPOSITION_STATUS_CONFIG[p.status]} />
                         {/* Change 3: Promote draft to active (internal only) */}
                         {p.status === 'draft' && canEditPropositions(userRole) && (
@@ -585,6 +626,11 @@ export function ProspectingProfileClient({
                           {/* ICP status dot + summary */}
                           <div className="flex items-center gap-2 mt-2 ml-5">
                             <span className={`h-2 w-2 rounded-full ${icpStatusDot}`} title={icpStatusLabel} />
+                            {p.icpStatus && (
+                              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${p.icpStatus === 'active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                ICP {p.icpStatus === 'active' ? 'Active' : 'Draft'}
+                              </span>
+                            )}
                             {hasIcpData ? (
                               <span className="text-xs text-gray-500 truncate">{dims.join(' · ')}</span>
                             ) : (
@@ -760,6 +806,8 @@ export function ProspectingProfileClient({
                         </>
                       );
                     })()}
+                    </>
+                    )}
                   </div>
                   );
                 })}
@@ -778,8 +826,8 @@ export function ProspectingProfileClient({
             </div>
           )}
 
-          {/* Proposition form (create/edit) */}
-          {showPropForm && canEditPropositions(userRole) && (
+          {/* Proposition form (create only — edits now happen inline) */}
+          {showPropForm && !editingPropId && canEditPropositions(userRole) && (
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
               <div>
                 <label className="text-xs font-medium text-gray-600">Name</label>

@@ -1,75 +1,77 @@
 # Slice 8 — Campaign–Proposition Linkage
 
-## Implementation Spec
-
-**Date:** 12 April 2026  
-**Status:** In progress  
-**Depends on:** Slices 1–7A (complete), Prospecting Profile (complete)
+## Status: Implemented
 
 ## What This Slice Delivers
 
-1. **Campaign–Proposition linkage** — campaigns reference propositions via `propositionRefs`. The campaign targeting fields are constrained to the proposition's ICP values.
-2. **Bidirectional navigation** — campaigns show which propositions they belong to (clickable links). Propositions show which campaigns reference them (clickable links).
-3. **Prospecting Profile UI consolidation** — unified proposition cards with expandable ICP sections and campaign lists (replacing separate proposition + ICP lists).
+1. **Campaign–Proposition linkage**: Every campaign can reference one or more propositions via `propositionRefs` (string array of proposition document IDs). Campaign targeting fields are constrained to the ICP values defined on the selected proposition(s).
+
+2. **Bidirectional navigation**: 
+   - Campaigns show which propositions they belong to (clickable links on detail page)
+   - Propositions show which campaigns are associated (in expanded card view, clickable links)
+   
+3. **Prospecting Profile UI consolidation**: The two-list layout (Propositions + separate ICP) is replaced with unified proposition cards where each card contains its ICP as an expandable section, plus associated campaigns.
 
 ## Data Model Changes
 
-### Campaign — `propositionRefs` field
-- Already exists: `propositionRefs: string[]` on Campaign type
-- Campaign targeting (geographies, sectors, titles) is constrained to the merged ICP values from linked propositions
+### Campaign Entity — New Field
+| Field | Type | Description |
+|-------|------|-------------|
+| `propositionRefs` | `string[]` (optional) | Array of proposition document IDs. Required before draft→active transition. |
 
-### Proposition — `icpStatus` field  
-- Already exists: `icpStatus?: ICPStatus` ('draft' | 'active') on Proposition type
-- Visual indicator on cards (green dot = active, amber = draft, grey = none)
+### Proposition Entity — New Field  
+| Field | Type | Description |
+|-------|------|-------------|
+| `icpStatus` | `'draft' \| 'active'` | Indicates whether ICP is reviewed. Default: `'draft'`. |
 
-### ICP — nested on Proposition (`icp?: ICP`)
-- `industries.managedListRefs: string[]`
-- `titles.managedListRefs: string[]`
-- `geographies.managedListRefs: string[]`
-- `companySizing: CompanySizingEntry[]`
-- `buyingProcess: ICPBuyingProcess`
-- `seniority.managedListRefs: string[]`
-- `exclusions: ICPExclusion[]`
+### Firestore Paths (unchanged)
+- Propositions: `tenants/{tenantId}/clients/{clientId}/propositions/{propositionId}`
+- Campaigns: `tenants/{tenantId}/clients/{clientId}/campaigns/{campaignId}`
+
+## Campaign Targeting Constraint Logic
+
+When a proposition is selected on a campaign:
+1. The system loads the proposition's ICP
+2. Targeting fields constrain to ICP values (narrow but not expand)
+3. If ICP has no values for a dimension, falls back to full managed list
+4. Changing proposition highlights out-of-scope values with amber warnings
+
+## UI Changes
+
+### Prospecting Profile Page
+- Unified proposition cards with expandable ICP sections
+- ICP status dot + badge (green=active, amber=draft, grey=none)
+- Campaign count pill per proposition (clickable to expand)
+- Associated campaigns list within expanded card
+- "+ Create Campaign" link pre-populates proposition
+- Inline proposition edit (edit form appears within the card, not at page bottom)
+
+### Campaign Form (Create/Edit)
+- Proposition multi-select (checkboxes) with ICP constraint logic
+- Targeting fields constrained when propositions selected
+- Amber warnings for out-of-scope targeting values
+
+### Campaign Detail Page
+- Linked Propositions card with clickable links to Prospecting Profile
+- ICP summary showing aggregated targeting from linked propositions
+
+### Campaign List Page
+- Proposition names shown as subtitle below campaign name
+
+## Seed Data
+- Cegid Spain campaigns linked to appropriate propositions
+- `icpStatus` set on existing propositions
 
 ## Files Modified
-
-### Types
-- `src/types/index.ts` — Already has `propositionRefs`, `icpStatus`, `icp` fields
-
-### Campaign Form (ICP Targeting Constraints)
-- `src/app/(dashboard)/clients/[clientId]/campaigns/CampaignForm.tsx`
-  - Added ICP constraint logic: when propositions are linked, targeting fields show only ICP values
-  - Out-of-scope value warnings (amber)  
-  - Draft ICP status indicator
-  - `initialPropositionId` prop for URL query param pre-population
-
-### Campaign New Page (Query Param Support)
-- `src/app/(dashboard)/clients/[clientId]/campaigns/new/page.tsx`
-  - Accepts `?proposition={id}` query param
-  - Passes `initialPropositionId` to CampaignForm
-
-### Prospecting Profile UI
-- `src/app/(dashboard)/clients/[clientId]/prospecting-profile/ProspectingProfileClient.tsx`
-  - Unified proposition cards with expandable ICP + campaign sections
-  - "+ Create Campaign" link per proposition
-
-## Navigation Chain
-
-```
-Proposition card → campaign count pill → expand card → campaign list → click campaign → Campaign Detail
-Campaign Detail → proposition name (clickable) → Prospecting Profile page
-Campaign List → proposition name column → clickable link
-Campaign Create → ?proposition={id} → pre-populated selector
-```
-
-## Acceptance Criteria
-
-- AC1: Propositions display as unified cards with ICP as expandable section
-- AC2: Collapsed card shows name, description, category, status, icpStatus indicator, campaign count, ICP summary
-- AC3: Expanded card shows full ICP fields, ICP status badge, campaigns list
-- AC4: "+ Create Campaign" link pre-populates proposition
-- AC5: Campaign targeting constrained by linked proposition ICP values
-- AC6: Out-of-scope values shown with amber warnings
-- AC7: Campaign detail shows proposition name as clickable link
-- AC8: Existing campaigns without propositionRef handled gracefully
-- AC9: Bidirectional navigation works end-to-end
+- `src/types/index.ts` — Added `propositionRefs` to Campaign, `icpStatus` to Proposition
+- `scripts/seed.ts` — Proposition-campaign linkage seed data
+- `src/app/(dashboard)/clients/[clientId]/prospecting-profile/ProspectingProfileClient.tsx` — Unified cards UI
+- `src/app/(dashboard)/clients/[clientId]/campaigns/CampaignForm.tsx` — Proposition selector + constraints
+- `src/app/(dashboard)/clients/[clientId]/campaigns/[campaignId]/CampaignDetailClient.tsx` — Proposition display
+- `src/app/(dashboard)/clients/[clientId]/campaigns/CampaignTable.tsx` — Proposition column
+- `src/app/(dashboard)/clients/[clientId]/campaigns/page.tsx` — Pass propositions to table
+- `src/app/(dashboard)/clients/[clientId]/campaigns/new/page.tsx` — Query param support
+- `src/app/api/clients/[clientId]/campaigns/route.ts` — Save propositionRefs
+- `src/app/api/clients/[clientId]/campaigns/[campaignId]/route.ts` — Save propositionRefs
+- `src/app/api/clients/[clientId]/propositions/[id]/route.ts` — Save icpStatus
+- `src/app/(dashboard)/clients/[clientId]/prospecting-profile/page.tsx` — Pass campaigns to profile
