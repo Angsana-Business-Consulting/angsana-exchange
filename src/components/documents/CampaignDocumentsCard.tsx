@@ -69,7 +69,11 @@ export default function CampaignDocumentsCard({
         const res = await fetch(
           `/api/clients/${clientId}/documents/browse?campaign=${campaignId}`
         );
-        if (!res.ok) return;
+        if (!res.ok) {
+          const errText = await res.text().catch(() => '');
+          console.error(`[CampaignDocumentsCard] Browse failed (${res.status}):`, errText);
+          return;
+        }
         const json = await res.json();
         const data = json.data;
 
