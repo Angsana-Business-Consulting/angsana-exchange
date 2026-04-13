@@ -623,18 +623,18 @@ export function ProspectingProfileClient({
                       const icpStatusLabel = p.icpStatus === 'active' ? 'ICP: Active' : p.icpStatus === 'draft' ? 'ICP: Draft' : 'No ICP defined';
                       return (
                         <>
-                          {/* ICP status dot + summary */}
+                          {/* ICP status dot + summary + campaign pill (right-aligned) */}
                           <div className="flex items-center gap-2 mt-2 ml-5">
-                            <span className={`h-2 w-2 rounded-full ${icpStatusDot}`} title={icpStatusLabel} />
+                            <span className={`h-2 w-2 rounded-full shrink-0 ${icpStatusDot}`} title={icpStatusLabel} />
                             {p.icpStatus && (
-                              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${p.icpStatus === 'active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                              <span className={`shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${p.icpStatus === 'active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
                                 ICP {p.icpStatus === 'active' ? 'Active' : 'Draft'}
                               </span>
                             )}
                             {hasIcpData ? (
-                              <span className="text-xs text-gray-500 truncate">{dims.join(' · ')}</span>
+                              <span className="text-xs text-gray-500 truncate min-w-0 flex-1">{dims.join(' · ')}</span>
                             ) : (
-                              <span className="text-xs text-gray-400 italic">
+                              <span className="text-xs text-gray-400 italic min-w-0 flex-1">
                                 No ICP defined —{' '}
                                 <button type="button" className="text-[#004156] hover:underline font-medium"
                                   onClick={() => setExpandedPropIds((prev) => { const next = new Set(prev); next.add(p.id); return next; })}>

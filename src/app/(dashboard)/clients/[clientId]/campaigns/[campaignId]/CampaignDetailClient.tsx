@@ -613,7 +613,7 @@ export function CampaignDetailClient({
   }
 
   return (
-    <div className="max-w-4xl">
+    <>
       {/* Toast */}
       {toastMessage && (
         <div className="fixed top-4 right-4 z-50 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-lg">
@@ -621,8 +621,8 @@ export function CampaignDetailClient({
         </div>
       )}
 
-      {/* Sub-header */}
-      <div className="sticky top-[-1.5rem] z-10 bg-gray-50 -mx-6 px-6 pt-4 pb-3 border-b border-gray-200 mb-4">
+      {/* Sub-header — full width, outside max-w constraint */}
+      <div className="sticky top-0 z-10 bg-gray-50 -mx-6 px-6 pb-3 pt-4 border-b border-gray-200 mb-6">
         <Link
           href={`/clients/${clientId}/campaigns`}
           className="mb-1 inline-flex items-center gap-1 text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
@@ -631,7 +631,7 @@ export function CampaignDetailClient({
           Back to {clientName} campaigns
         </Link>
 
-        <div className="flex items-start justify-between">
+        <div className="flex items-start justify-between max-w-4xl">
           <div>
             <h1 className="text-xl font-bold text-[var(--foreground)]">
               {campaign.campaignName}
@@ -656,6 +656,8 @@ export function CampaignDetailClient({
           )}
         </div>
       </div>
+
+    <div className="max-w-4xl">
 
       {/* Status actions — for internal users, non-completed campaigns */}
       {canEdit && (
@@ -1028,5 +1030,6 @@ export function CampaignDetailClient({
       {/* Status History */}
       <StatusTimeline history={campaign.statusHistory} />
     </div>
+    </>
   );
 }

@@ -241,20 +241,24 @@ export async function GET(
       .doc(clientId)
       .collection('documents');
 
-    // Query for active documents in visible categories
-    // Firestore `in` operator supports up to 30 values — our template has ~9
-    let query = documentsRef
-      .where('status', '==', 'active')
-      .where('folderCategory', 'in', targetCategories.length > 0 ? targetCategories : ['__none__']);
-
-    // Apply campaign filter if provided (array-contains for multi-tag support)
+    // When campaign filter is active, we use a simpler query to avoid needing
+    // a composite index for folderCategory(in) + campaignRefs(array-contains).
+    // We query by campaignRefs + status only, then filter by folderCategory in JS.
+    let snapshot;
     if (campaignFilter) {
-      query = query.where('campaignRefs', 'array-contains', campaignFilter);
+      const campaignQuery = documentsRef
+        .where('campaignRefs', 'array-contains', campaignFilter)
+        .where('status', '==', 'active')
+        .orderBy('uploadedAt', 'desc');
+      snapshot = await campaignQuery.get();
+    } else {
+      // No campaign filter — use folderCategory `in` query as before
+      const categoryQuery = documentsRef
+        .where('status', '==', 'active')
+        .where('folderCategory', 'in', targetCategories.length > 0 ? targetCategories : ['__none__'])
+        .orderBy('uploadedAt', 'desc');
+      snapshot = await categoryQuery.get();
     }
-
-    const snapshot = await query
-      .orderBy('uploadedAt', 'desc')
-      .get();
 
     // Build category-keyed map of folder groups using the folderMap
     const categoryToFolderId = new Map<string, string>();
