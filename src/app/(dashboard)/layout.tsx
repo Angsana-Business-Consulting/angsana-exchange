@@ -23,9 +23,9 @@ export default async function DashboardLayout({
 
   return (
     <AuthProvider user={user}>
-      <div className="flex h-screen">
+      <div className="flex h-screen overflow-hidden">
         <Sidebar />
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex flex-1 flex-col overflow-hidden min-w-0">
           <Header />
           <main className="flex-1 overflow-y-auto bg-gray-50">
             {children}

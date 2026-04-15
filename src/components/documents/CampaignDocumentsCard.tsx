@@ -11,7 +11,8 @@ import {
   formatShortDate,
   getFolderDisplayName,
 } from '@/lib/documents/utils';
-import type { DocumentFolderItem, Campaign } from '@/types';
+import type { DocumentFolderItem, Campaign, Proposition } from '@/types';
+import { TagPill } from '@/components/ui/TagPill';
 
 // =============================================================================
 // Types
@@ -26,6 +27,7 @@ interface BrowseFile {
   folderCategory: string;
   visibility: string;
   campaignRefs?: string[];
+  propositionRefs?: string[];
   /** @deprecated Legacy field — use campaignRefs */
   campaignRef?: string | null;
 }
@@ -43,6 +45,8 @@ interface CampaignDocumentsCardProps {
   folderTemplate?: DocumentFolderItem[];
   /** Optional campaigns list for resolving campaign names on multi-tag pills */
   campaigns?: Pick<Campaign, 'id' | 'campaignName' | 'status'>[];
+  /** Optional propositions list for resolving proposition names on tag pills */
+  propositions?: Pick<Proposition, 'id' | 'name' | 'status'>[];
 }
 
 // =============================================================================
@@ -54,6 +58,7 @@ export default function CampaignDocumentsCard({
   campaignId,
   folderTemplate,
   campaigns,
+  propositions,
 }: CampaignDocumentsCardProps) {
   const { claims } = useAuth();
   const role = claims.role;
@@ -118,6 +123,15 @@ export default function CampaignDocumentsCard({
       if (match) return match.campaignName;
     }
     return cid.slice(0, 8) + '…';
+  }
+
+  /** Resolve proposition ID to name, falling back to truncated ID */
+  function getPropositionName(pid: string): string {
+    if (propositions) {
+      const match = propositions.find((p) => p.id === pid);
+      if (match) return match.name;
+    }
+    return pid.slice(0, 8) + '…';
   }
 
   // ── Loading skeleton ────────────────────────────────────────────────────
@@ -203,29 +217,29 @@ export default function CampaignDocumentsCard({
                 {folder.files.map((file) => {
                   // Show campaign pills for OTHER campaigns this file is also linked to
                   const otherCampaigns = (file.campaignRefs || []).filter((cid) => cid !== campaignId);
+                  const filePropRefs = file.propositionRefs || [];
+                  const hasPills = otherCampaigns.length > 0 || filePropRefs.length > 0;
 
                   return (
-                    <div key={file.documentId} className="flex items-center gap-2 py-0.5">
-                      <FileText className="shrink-0" style={{ width: '14px', height: '14px', color: '#3B7584', strokeWidth: 1.5 }} />
-                      <button
-                        onClick={() => handleFileClick(file)}
-                        className="truncate text-sm text-[#0369A1] hover:underline cursor-pointer text-left"
-                      >
-                        {file.name}
-                      </button>
-                      <span className="shrink-0 text-xs text-gray-400">{formatShortDate(file.uploadedAt)}</span>
-                      {/* Multi-campaign pills — show other campaigns this file is also linked to */}
-                      {otherCampaigns.length > 0 && (
-                        <div className="flex shrink-0 gap-1">
+                    <div key={file.documentId} className="space-y-0.5 py-0.5">
+                      <div className="flex items-center gap-2">
+                        <FileText className="shrink-0" style={{ width: '14px', height: '14px', color: '#3B7584', strokeWidth: 1.5 }} />
+                        <button
+                          onClick={() => handleFileClick(file)}
+                          className="truncate text-sm text-[#0369A1] hover:underline cursor-pointer text-left"
+                        >
+                          {file.name}
+                        </button>
+                        <span className="shrink-0 text-xs text-gray-400">{formatShortDate(file.uploadedAt)}</span>
+                      </div>
+                      {/* Tag pills — campaigns (teal) + propositions (mauve) */}
+                      {hasPills && (
+                        <div className="flex flex-wrap gap-1 ml-[22px]">
                           {otherCampaigns.map((cid) => (
-                            <span
-                              key={cid}
-                              className="rounded-full px-2 py-0.5 text-[10px] font-medium"
-                              style={{ background: '#E1F5EE', color: '#085041' }}
-                              title={getCampaignName(cid)}
-                            >
-                              {getCampaignName(cid)}
-                            </span>
+                            <TagPill key={cid} label={getCampaignName(cid)} variant="campaign" size="xs" />
+                          ))}
+                          {filePropRefs.map((pid) => (
+                            <TagPill key={pid} label={getPropositionName(pid)} variant="proposition" size="xs" />
                           ))}
                         </div>
                       )}

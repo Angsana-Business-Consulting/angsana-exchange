@@ -10,6 +10,7 @@ import {
   Lightbulb,
   Target,
   ShieldBan,
+  ShieldAlert,
   FileText,
   ClipboardCheck,
   BarChart3,
@@ -24,6 +25,7 @@ import { useAuth } from '@/lib/auth/AuthContext';
 import { clientNavItems, internalNavItems, adminNavItems } from '@/config/navigation';
 import { defaultTheme } from '@/config/theme';
 import { cn } from '@/lib/utils';
+import { ExpandableNavGroup } from '@/components/nav/ExpandableNavGroup';
 import type { NavItem, UserRole } from '@/types';
 
 /**
@@ -37,6 +39,7 @@ const iconMap: Record<string, LucideIcon> = {
   Lightbulb,
   Target,
   ShieldBan,
+  ShieldAlert,
   FileText,
   ClipboardCheck,
   BarChart3,
@@ -93,6 +96,28 @@ function NavSection({
           ? item.route.replace('{clientId}', clientId)
           : item.route;
         const Icon = iconMap[item.icon];
+
+        // --- Expandable group with children ---
+        if (item.children && item.children.length > 0) {
+          const resolvedChildren = item.children.map((child) => ({
+            ...child,
+            href: clientId
+              ? child.route.replace('{clientId}', clientId)
+              : child.route,
+          }));
+
+          return (
+            <ExpandableNavGroup
+              key={item.label}
+              label={item.label}
+              icon={Icon}
+              childItems={resolvedChildren}
+              currentPath={pathname}
+            />
+          );
+        }
+
+        // --- Standard nav item ---
         const isActive = pathname === href || pathname.startsWith(href + '/');
 
         return (
@@ -135,7 +160,7 @@ export function Sidebar() {
   const visibleAdminItems = filterNavItems(adminNavItems, role, permittedModules);
 
   return (
-    <aside className="flex h-screen w-64 flex-col bg-[var(--primary)] text-white">
+    <aside className="flex h-screen w-64 shrink-0 flex-col bg-[var(--primary)] text-white">
       {/* Logo */}
       <div className="flex h-16 items-center px-6">
         {/* eslint-disable-next-line @next/next/no-img-element */}

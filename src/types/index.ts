@@ -49,7 +49,7 @@ export interface UserContext {
 export interface NavItem {
   /** Display label */
   label: string;
-  /** Route path — can include {clientId} placeholder */
+  /** Route path — can include {clientId} placeholder. Omit for expandable parents with no own route. */
   route: string;
   /** Lucide icon name */
   icon: string;
@@ -57,6 +57,20 @@ export interface NavItem {
   roles?: UserRole[];
   /** Module key — matched against permittedModules claim */
   module?: string;
+  /** Child items — renders as an expandable group when present */
+  children?: NavChildItem[];
+}
+
+/**
+ * A child item within an expandable nav group.
+ */
+export interface NavChildItem {
+  /** Display label */
+  label: string;
+  /** Route path — can include {clientId} placeholder */
+  route: string;
+  /** If true, item is greyed out and shows "soon" label */
+  placeholder?: boolean;
 }
 
 /**
@@ -254,6 +268,73 @@ export const CAMPAIGN_STATUS_CONFIG: Record<
 };
 
 // =============================================================================
+// Exclusions (Prospecting Rules — Step 1)
+// =============================================================================
+
+/**
+ * Exclusion scope — determines the breadth of the exclusion.
+ */
+export type ExclusionScope = 'company-wide' | 'company-scoped' | 'contact-only';
+
+/**
+ * Exclusion status — active or soft-deleted.
+ */
+export type ExclusionStatus = 'active' | 'removed';
+
+/**
+ * Exclusion entry from Firestore.
+ * Stored at tenants/{tenantId}/clients/{clientId}/exclusions/{exclusionId}
+ */
+export interface ExclusionEntry {
+  /** Firestore document ID (auto-generated) */
+  id?: string;
+  /** Scope: company-wide, company-scoped, or contact-only */
+  scope: ExclusionScope;
+  /** The company being excluded. Max 200 chars. */
+  companyName: string;
+  /** Required when scope is contact-only. Optional otherwise. Max 150 chars. */
+  contactName?: string;
+  /** Job title of excluded contact. Max 150 chars. */
+  contactTitle?: string;
+  /** Reference to exclusionReasons managed list value. Optional. */
+  reason?: string;
+  /** Brand/division excluded. Relevant when company-scoped. Max 200 chars. */
+  brandOrDivision?: string;
+  /** Service area excluded. Relevant when company-scoped. Max 200 chars. */
+  service?: string;
+  /** Geography excluded. Relevant when company-scoped. Max 200 chars. */
+  geography?: string;
+  /** Free-text context. Max 280 chars. */
+  notes?: string;
+  /** Status: active or removed. Default: active. */
+  status: ExclusionStatus;
+  /** Firebase UID of creator. */
+  addedBy: string;
+  /** Display name of creator. */
+  addedByName: string;
+  /** Creation timestamp. */
+  addedAt: string; // ISO string on client side
+  /** Firebase UID of remover. Null when active. */
+  removedBy?: string;
+  /** Display name of remover. */
+  removedByName?: string;
+  /** Removal timestamp. Null when active. */
+  removedAt?: string;
+}
+
+/**
+ * Exclusion scope display configuration — colour-coded badges.
+ */
+export const EXCLUSION_SCOPE_CONFIG: Record<
+  ExclusionScope,
+  { label: string; colour: string; bgColour: string }
+> = {
+  'company-wide': { label: 'Company-wide', colour: '#FFFFFF', bgColour: '#3B7584' },
+  'company-scoped': { label: 'Company-scoped', colour: '#FFFFFF', bgColour: '#FCB242' },
+  'contact-only': { label: 'Contact only', colour: '#FFFFFF', bgColour: '#827786' },
+};
+
+// =============================================================================
 // Managed Lists
 // =============================================================================
 
@@ -270,7 +351,8 @@ export type ManagedListName =
   | 'documentFolders'
   | 'propositionCategories'
   | 'messagingTypes'
-  | 'buyingProcessTypes';
+  | 'buyingProcessTypes'
+  | 'exclusionReasons';
 
 /**
  * A single item within a managed list.
@@ -672,6 +754,11 @@ export const MANAGED_LIST_CONFIG: Record<
   buyingProcessTypes: {
     label: 'Buying Process Types',
     description: 'How buying decisions are made — e.g. Single Decision-Maker, Committee',
+    hasOrientation: false,
+  },
+  exclusionReasons: {
+    label: 'Exclusion Reasons',
+    description: 'Why a company or contact is excluded from prospecting — e.g. Active client, Contractual',
     hasOrientation: false,
   },
 };

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import type { Campaign, Proposition } from '@/types';
+import { TagPill } from '@/components/ui/TagPill';
 import { CAMPAIGN_STATUS_CONFIG } from '@/types';
 
 /**
@@ -123,15 +124,13 @@ export function CampaignTable({
                       {campaign.propositionRefs!.map((propId) => {
                         const prop = propositions.find((p) => p.id === propId);
                         return (
-                          <Link
+                          <TagPill
                             key={propId}
+                            label={prop?.name || propId}
+                            variant="proposition"
+                            size="xs"
                             href={`/clients/${clientId}/prospecting-profile`}
-                            className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium hover:opacity-80 transition-opacity"
-                            style={{ backgroundColor: '#F0E6F0', color: '#5C3D6E' }}
-                            title={`Proposition: ${prop?.name || propId}`}
-                          >
-                            {prop?.name || propId}
-                          </Link>
+                          />
                         );
                       })}
                     </div>

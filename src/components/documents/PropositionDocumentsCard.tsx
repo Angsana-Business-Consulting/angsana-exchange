@@ -12,6 +12,7 @@ import {
   getFolderDisplayName,
 } from '@/lib/documents/utils';
 import type { DocumentFolderItem, Proposition, Campaign } from '@/types';
+import { TagPill } from '@/components/ui/TagPill';
 
 // =============================================================================
 // Types
@@ -213,11 +214,7 @@ export default function PropositionDocumentsCard({
                       <div className="flex flex-wrap gap-1 ml-[22px] mt-0.5">
                         {file.campaignRefs!.map((cid) => {
                           const cName = campaigns.find((c) => c.id === cid)?.campaignName || cid;
-                          return (
-                            <span key={cid} className="inline-block max-w-[160px] truncate rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: '#E1F5EE', color: '#085041' }} title={cName}>
-                              {cName}
-                            </span>
-                          );
+                          return <TagPill key={cid} label={cName} variant="campaign" size="xs" />;
                         })}
                       </div>
                     )}

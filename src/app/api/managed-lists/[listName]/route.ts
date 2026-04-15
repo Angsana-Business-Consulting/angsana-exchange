@@ -10,6 +10,11 @@ const VALID_LIST_NAMES: ManagedListName[] = [
   'titleBands',
   'companySizes',
   'therapyAreas',
+  'documentFolders',
+  'propositionCategories',
+  'messagingTypes',
+  'buyingProcessTypes',
+  'exclusionReasons',
 ];
 
 /**

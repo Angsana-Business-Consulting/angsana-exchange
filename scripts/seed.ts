@@ -385,6 +385,23 @@ async function seedFirestore() {
   });
   console.log('    ✓ buyingProcessTypes (4 items)');
 
+  // 8.4 exclusionReasons (Prospecting Rules Step 1 — 8 items)
+  await managedListsRef.doc('exclusionReasons').set({
+    items: [
+      { id: 'active-client', label: 'Active client relationship', active: true },
+      { id: 'lapsed-client', label: 'Lapsed client relationship', active: true },
+      { id: 'contractual', label: 'Contractual restriction', active: true },
+      { id: 'client-request', label: 'Client request', active: true },
+      { id: 'negative-experience', label: 'Previous negative experience', active: true },
+      { id: 'contact-left', label: 'Contact has left company', active: true },
+      { id: 'contact-request', label: 'Contact requested no contact', active: true },
+      { id: 'other', label: 'Other', active: true },
+    ],
+    updatedAt: now,
+    updatedBy: 'seed-script',
+  });
+  console.log('    ✓ exclusionReasons (8 items)');
+
   // --- Client: Cegid Spain (full, with campaigns) ---
   console.log('  Seeding client: cegid-spain...');
   const cegidRef = tenantRef.collection('clients').doc('cegid-spain');
@@ -402,7 +419,7 @@ async function seedFirestore() {
     logoPath: null,
     createdAt: now,
     updatedAt: now,
-  });
+  }, { merge: true });
 
   // 6.7 Campaigns for Cegid Spain — updated with targeting fields and status history
   console.log('  Seeding campaigns for cegid-spain...');
@@ -855,6 +872,81 @@ async function seedFirestore() {
   });
   console.log('    ✓ Assigned 3 approved So Whats to Iberia Retail POS — Fashion & Luxury');
 
+  // --- Exclusions for Cegid Spain (Prospecting Rules Step 1) ---
+  console.log('  Seeding exclusions for cegid-spain...');
+  const exclusionsRef = cegidRef.collection('exclusions');
+
+  // Guard: skip if exclusions already exist (prevents duplicates on re-run)
+  const existingExclusions = await exclusionsRef.limit(1).get();
+  if (!existingExclusions.empty) {
+    console.log(`    ⏭ Exclusions already exist (${existingExclusions.size}+ docs) — skipping to prevent duplicates`);
+  } else {
+  const auth = getAuth();
+  let keithUid = 'seed-script';
+  try {
+    const keithUser = await auth.getUserByEmail('keith@angsana.com');
+    keithUid = keithUser.uid;
+  } catch { /* use fallback */ }
+
+  const exclusionEntries = [
+    { companyName: 'ECOALF', scope: 'company-wide', reason: 'active-client', notes: '', addedAt: new Date('2026-01-15') },
+    { companyName: 'KIABI España', scope: 'company-wide', reason: 'active-client', notes: 'Fully closed', addedAt: new Date('2026-01-18') },
+    { companyName: 'CAMPER', scope: 'company-wide', reason: 'active-client', notes: 'Fully closed', addedAt: new Date('2026-01-22') },
+    { companyName: 'DÉCIMAS', scope: 'company-wide', reason: 'active-client', notes: 'Fully closed', addedAt: new Date('2026-02-01') },
+    { companyName: 'COOSY', scope: 'company-wide', reason: 'active-client', notes: 'Fully closed', addedAt: new Date('2026-02-05') },
+    { companyName: 'LOLA RUIZ', scope: 'company-wide', reason: 'active-client', notes: 'Fully closed', addedAt: new Date('2026-02-10') },
+    { companyName: 'Seidor', scope: 'company-wide', reason: 'active-client', notes: '', addedAt: new Date('2026-02-14') },
+    {
+      companyName: 'Cortefiel (Tendam)', scope: 'company-scoped', reason: 'client-request',
+      brandOrDivision: 'Cortefiel', geography: 'Madrid',
+      notes: 'Opportunities opened from Alessandro', addedAt: new Date('2026-02-20'),
+    },
+    {
+      companyName: 'Springfield (Tendam)', scope: 'company-scoped', reason: 'client-request',
+      brandOrDivision: 'Springfield', geography: 'Madrid',
+      notes: 'Opportunities opened from Alessandro', addedAt: new Date('2026-02-22'),
+    },
+    {
+      companyName: 'Superdry', scope: 'company-scoped', reason: 'active-client',
+      geography: 'UK (Iberia offices)',
+      notes: 'Cegid customer', addedAt: new Date('2026-03-01'),
+    },
+    {
+      companyName: 'Prénatal', scope: 'company-scoped', reason: 'client-request',
+      geography: 'Milan, Italy',
+      notes: 'Decision center in Italy', addedAt: new Date('2026-03-05'),
+    },
+    {
+      companyName: 'Juan Pérez', scope: 'contact-only', reason: 'contact-request',
+      contactName: 'Juan Pérez', contactTitle: 'Area Manager',
+      notes: '', addedAt: new Date('2026-03-10'),
+    },
+  ];
+
+  for (const entry of exclusionEntries) {
+    await exclusionsRef.add({
+      scope: entry.scope,
+      companyName: entry.companyName,
+      contactName: (entry as any).contactName || null,
+      contactTitle: (entry as any).contactTitle || null,
+      reason: entry.reason || null,
+      brandOrDivision: (entry as any).brandOrDivision || null,
+      service: (entry as any).service || null,
+      geography: (entry as any).geography || null,
+      notes: entry.notes || null,
+      status: 'active',
+      addedBy: keithUid,
+      addedByName: 'Keith New',
+      addedAt: Timestamp.fromDate(entry.addedAt),
+      removedBy: null,
+      removedByName: null,
+      removedAt: null,
+    });
+    console.log(`    ✓ Exclusion: ${entry.companyName} (${entry.scope})`);
+  }
+  console.log(`    ✓ Seeded ${exclusionEntries.length} exclusion entries`);
+  } // end exclusion guard
+
   // --- Client: Wavix (stub — no campaigns) ---
   console.log('  Seeding client: wavix (stub)...');
   const wavixRef = tenantRef.collection('clients').doc('wavix');
@@ -872,7 +964,7 @@ async function seedFirestore() {
     logoPath: null,
     createdAt: now,
     updatedAt: now,
-  });
+  }, { merge: true });
 
   // =========================================================================
   // Slice 8 — Propositions & Prospecting Profiles
@@ -1192,10 +1284,11 @@ async function main() {
   console.log('  serviceTypes (7), sectors (10), geographies (12),');
   console.log('  titleBands (11), companySizes (4), therapyAreas (9),');
   console.log('  documentFolders (9), propositionCategories (4), messagingTypes (6),');
-  console.log('  buyingProcessTypes (4)');
+  console.log('  buyingProcessTypes (4), exclusionReasons (8)');
   console.log('');
   console.log('Slice 8 data seeded:');
   console.log('  Cegid Spain: 3 propositions (2 with per-proposition ICP), full prospecting profile');
+  console.log('  Cegid Spain: 12 exclusion entries (Prospecting Rules Step 1)');
   console.log('  Wavix: 1 proposition, empty prospecting profile');
   console.log('');
   console.log('Test accounts (password: Exchange2026!):');

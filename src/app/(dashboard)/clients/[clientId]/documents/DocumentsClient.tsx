@@ -33,6 +33,7 @@ import {
 } from '@/lib/documents/utils';
 import type { FolderTreeNode } from '@/lib/documents/utils';
 import type { DocumentFolderItem, UserRole, Campaign, Proposition } from '@/types';
+import { TagPill } from '@/components/ui/TagPill';
 
 // =============================================================================
 // Types
@@ -252,6 +253,8 @@ function FileRow({
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; openUp: boolean } | null>(null);
 
   // Close menus on outside click
   useEffect(() => {
@@ -363,14 +366,38 @@ function FileRow({
       {/* Three-dot menu */}
       <div className="relative shrink-0" ref={menuRef}>
         <button
-          onClick={() => { setMenuOpen(!menuOpen); setCampaignMenuOpen(false); setDeleteConfirm(false); }}
+          ref={buttonRef}
+          onClick={() => {
+            if (!menuOpen && buttonRef.current) {
+              const rect = buttonRef.current.getBoundingClientRect();
+              const spaceBelow = window.innerHeight - rect.bottom;
+              const openUp = spaceBelow < 320; // menu is ~300px tall
+              setMenuPos({
+                top: openUp ? rect.top : rect.bottom + 4,
+                left: rect.right - 208, // 208 = w-52
+                openUp,
+              });
+            }
+            setMenuOpen(!menuOpen);
+            setCampaignMenuOpen(false);
+            setDeleteConfirm(false);
+          }}
           className="rounded p-1 text-gray-400 opacity-0 group-hover:opacity-100 hover:bg-gray-100 hover:text-gray-600 transition-opacity"
         >
           <MoreHorizontal className="h-4 w-4" />
         </button>
 
-        {menuOpen && (
-          <div className="absolute right-0 top-8 z-50 w-52 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+        {menuOpen && menuPos && (
+          <div
+            className="fixed z-[9999] w-52 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+            style={{
+              ...(menuPos.openUp
+                ? { bottom: window.innerHeight - menuPos.top + 4, left: menuPos.left }
+                : { top: menuPos.top, left: menuPos.left }),
+              maxHeight: '70vh',
+              overflowY: 'auto',
+            }}
+          >
             {internal && (
               <button
                 onClick={() => { window.open(getGoogleEditorUrl(file.driveFileId, file.mimeType), '_blank'); setMenuOpen(false); }}
@@ -549,20 +576,12 @@ function FileRow({
           {/* Campaign pills (teal) */}
           {fileRefs.map((cid) => {
             const cName = campaigns.find((c) => c.id === cid)?.campaignName || cid;
-            return (
-              <span key={cid} className="inline-block max-w-[200px] truncate rounded-full px-2.5 py-0.5 text-[11px] font-medium" style={{ background: '#E1F5EE', color: '#085041' }} title={cName}>
-                {cName}
-              </span>
-            );
+            return <TagPill key={cid} label={cName} variant="campaign" />;
           })}
           {/* Proposition pills (mauve) */}
           {propRefs.map((propId) => {
             const pName = propositions.find((p) => p.id === propId)?.name || propId;
-            return (
-              <span key={propId} className="inline-block max-w-[200px] truncate rounded-full px-2.5 py-0.5 text-[11px] font-medium" style={{ background: '#F0EBF4', color: '#5B4370' }} title={pName}>
-                {pName}
-              </span>
-            );
+            return <TagPill key={propId} label={pName} variant="proposition" />;
           })}
         </div>
       )}

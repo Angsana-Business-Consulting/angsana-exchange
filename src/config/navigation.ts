@@ -13,6 +13,8 @@ import type { NavItem } from '@/types';
  *
  * If roles is omitted/empty, visible to all authenticated users.
  * If module is omitted, always visible (not gated by permittedModules).
+ *
+ * Items with `children` render as expandable groups via ExpandableNavGroup.
  */
 export const clientNavItems: NavItem[] = [
   {
@@ -28,6 +30,34 @@ export const clientNavItems: NavItem[] = [
     module: 'campaigns',
   },
   {
+    label: 'Prospecting Profile',
+    route: '/clients/{clientId}/prospecting-profile',
+    icon: 'UserSearch',
+    module: 'prospecting-profile',
+  },
+  // --- Prospecting Rules: expandable group ---
+  {
+    label: 'Prospecting Rules',
+    route: '', // No own route — parent is toggle-only
+    icon: 'ShieldAlert',
+    children: [
+      {
+        label: 'Exclusions',
+        route: '/clients/{clientId}/exclusions',
+      },
+      {
+        label: 'Conflicts',
+        route: '/clients/{clientId}/conflicts',
+        placeholder: true,
+      },
+      {
+        label: 'Relationships',
+        route: '/clients/{clientId}/relationships',
+        placeholder: true,
+      },
+    ],
+  },
+  {
     label: 'Check-ins',
     route: '/clients/{clientId}/checkins',
     icon: 'CalendarCheck',
@@ -40,41 +70,28 @@ export const clientNavItems: NavItem[] = [
     module: 'actions',
   },
   {
-    label: 'So Whats',
-    route: '/clients/{clientId}/sowhats',
-    icon: 'Lightbulb',
-    module: 'sowhats',
-  },
-  {
-    label: 'Prospecting Profile',
-    route: '/clients/{clientId}/prospecting-profile',
-    icon: 'UserSearch',
-    module: 'prospecting-profile',
-  },
-  {
     label: 'Wishlists',
     route: '/clients/{clientId}/wishlists',
     icon: 'Target',
     module: 'wishlists',
   },
   {
-    label: 'Team',
-    route: '/clients/{clientId}/team',
-    icon: 'Users',
-    roles: ['client-approver', 'client-viewer'],
-  },
-  {
-    label: 'DNC / MSA-PSL',
-    route: '/clients/{clientId}/dnc',
-    icon: 'ShieldBan',
-    module: 'dnc',
-    roles: ['internal-admin', 'internal-user'],
+    label: 'So Whats',
+    route: '/clients/{clientId}/sowhats',
+    icon: 'Lightbulb',
+    module: 'sowhats',
   },
   {
     label: 'Documents',
     route: '/clients/{clientId}/documents',
     icon: 'FileText',
     module: 'documents',
+  },
+  {
+    label: 'Team',
+    route: '/clients/{clientId}/team',
+    icon: 'Users',
+    roles: ['client-approver', 'client-viewer'],
   },
   {
     label: 'Settings',
