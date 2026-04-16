@@ -52,7 +52,6 @@ export const clientNavItems: NavItem[] = [
       {
         label: 'Relationships',
         route: '/clients/{clientId}/relationships',
-        placeholder: true,
       },
     ],
   },

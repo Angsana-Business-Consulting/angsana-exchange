@@ -1032,6 +1032,122 @@ async function seedFirestore() {
     console.log(`    ✓ Seeded ${conflictEntries.length} conflict entries for Cegid Spain`);
   } // end conflicts guard
 
+  // --- Relationships for Cegid Spain (Prospecting Rules — Relationships) ---
+  console.log('  Seeding relationships for cegid-spain...');
+  const relationshipsRef = cegidRef.collection('relationships');
+
+  // Guard: skip if relationships already exist (prevents duplicates on re-run)
+  const existingRelationships = await relationshipsRef.limit(1).get();
+  if (!existingRelationships.empty) {
+    console.log(`    ⏭ Relationships already exist — skipping to prevent duplicates`);
+  } else {
+    const relationshipEntries = [
+      {
+        companyName: 'GSK',
+        relationshipType: 'active-client',
+        brandOrDivision: 'Corporate',
+        service: 'Internal Comms',
+        geography: 'Global',
+        keyContacts: 'Ben Tan',
+        notes: 'Internal Comms — fine for external',
+        hasAgreement: true,
+        agreementType: 'msa',
+        agreementScope: 'Internal Communications and Employee Engagement',
+        startDate: Timestamp.fromDate(new Date('2023-01-15')),
+        endDate: null,
+        agreementStatus: 'active',
+        whereWorking: ['Internal Comms UK', 'Employee Engagement Global'],
+        whereCould: ['External Comms EMEA', 'Corporate Affairs', 'Sustainability Communications'],
+        addedAt: Timestamp.fromDate(new Date('2025-10-15')),
+      },
+      {
+        companyName: 'Merck',
+        relationshipType: 'active-client',
+        brandOrDivision: 'Multiple pipeline brands',
+        service: 'Franchise comms',
+        geography: 'EU/US',
+        keyContacts: 'Elizabeth Walters, Noel Piscitelli',
+        hasAgreement: false,
+        addedAt: Timestamp.fromDate(new Date('2025-11-01')),
+      },
+      {
+        companyName: 'Novo Nordisk',
+        relationshipType: 'active-client',
+        brandOrDivision: 'Obesity EUCAN / International Ops',
+        service: 'Data comms',
+        geography: 'EUCAN',
+        keyContacts: 'Alex Chapman, Katrine Hertz Mortensen',
+        hasAgreement: false,
+        addedAt: Timestamp.fromDate(new Date('2025-11-15')),
+      },
+      {
+        companyName: 'UCB',
+        relationshipType: 'active-client',
+        brandOrDivision: 'Above brand',
+        service: 'Patient education and social media',
+        geography: 'Global/EU',
+        keyContacts: 'Scott Flemming, Amy Cheshire',
+        tenure: '5+ years',
+        hasAgreement: true,
+        agreementType: 'psl',
+        agreementScope: 'Patient Education and Social Media Communications',
+        startDate: Timestamp.fromDate(new Date('2021-03-01')),
+        endDate: Timestamp.fromDate(new Date('2026-03-01')),
+        agreementStatus: 'expiring',
+        whereWorking: ['Patient education EU', 'Social media Global'],
+        whereCould: ['HCP engagement', 'Disease awareness campaigns'],
+        addedAt: Timestamp.fromDate(new Date('2025-12-01')),
+      },
+      {
+        companyName: 'Novartis UK',
+        relationshipType: 'lapsed-client',
+        service: 'Patient and internal comms',
+        geography: 'UK',
+        tenure: '1 year',
+        hasAgreement: false,
+        addedAt: Timestamp.fromDate(new Date('2025-12-15')),
+      },
+      {
+        companyName: 'Hemocue',
+        relationshipType: 'lapsed-client',
+        brandOrDivision: 'Diagnostic testing',
+        service: 'Messaging and social assets',
+        geography: 'US/Australia/EMEA/EU',
+        keyContacts: 'Staffan Ahlandsberg',
+        notes: 'Not current client but recent',
+        hasAgreement: false,
+        addedAt: Timestamp.fromDate(new Date('2026-01-10')),
+      },
+      {
+        companyName: 'J&J',
+        relationshipType: 'prospect',
+        hasAgreement: false,
+        addedAt: Timestamp.fromDate(new Date('2026-02-01')),
+      },
+      {
+        companyName: 'Thermo Fisher',
+        relationshipType: 'active-client',
+        brandOrDivision: 'Corporate',
+        service: 'Corporate comms',
+        geography: 'EMEA',
+        keyContacts: 'Sheela Power',
+        hasAgreement: false,
+        addedAt: Timestamp.fromDate(new Date('2026-03-01')),
+      },
+    ];
+
+    for (const entry of relationshipEntries) {
+      await relationshipsRef.add({
+        ...entry,
+        status: 'active',
+        addedBy: 'keith@angsana.com',
+        addedByName: 'Keith New',
+      });
+      console.log(`    ✓ Relationship: ${entry.companyName} (${entry.relationshipType}${entry.hasAgreement ? ', with agreement' : ''})`);
+    }
+    console.log(`    ✓ Seeded ${relationshipEntries.length} relationship entries for Cegid Spain`);
+  } // end relationships guard
+
   // --- Client: Wavix (stub — no campaigns) ---
   console.log('  Seeding client: wavix (stub)...');
   const wavixRef = tenantRef.collection('clients').doc('wavix');
@@ -1439,6 +1555,7 @@ async function main() {
   console.log('Slice 8 data seeded:');
   console.log('  Cegid Spain: 3 propositions (2 with per-proposition ICP), full prospecting profile');
   console.log('  Cegid Spain: 12 exclusion entries (Prospecting Rules Step 1)');
+  console.log('  Cegid Spain: 8 relationship entries (2 with MSA-PSL detail)');
   console.log('  Wavix: 1 proposition, empty prospecting profile');
   console.log('');
   console.log('Test accounts (password: Exchange2026!):');

@@ -1,16 +1,20 @@
-import { PlaceholderPage } from '@/components/PlaceholderPage';
+import RelationshipsClient from './RelationshipsClient';
 
-export default async function RelationshipsPage({
-  params,
-}: {
+interface PageProps {
   params: Promise<{ clientId: string }>;
-}) {
+}
+
+/**
+ * Relationships page — server component wrapper.
+ * Replaces the "Coming soon" placeholder.
+ * Follows the same pattern as Exclusions and Conflicts pages.
+ */
+export default async function RelationshipsPage({ params }: PageProps) {
   const { clientId } = await params;
+
   return (
-    <PlaceholderPage
-      title="Relationships"
-      clientId={clientId}
-      description="Relationship records track MSA/PSL agreements and other formal relationships between clients and target companies. This module is coming in a future update."
-    />
+    <div className="p-6">
+      <RelationshipsClient clientId={clientId} />
+    </div>
   );
 }

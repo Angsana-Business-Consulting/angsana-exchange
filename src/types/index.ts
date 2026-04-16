@@ -412,6 +412,128 @@ export const CONFLICT_SCOPE_CONFIG: Record<
 };
 
 // =============================================================================
+// Relationships (Prospecting Rules — Step 3)
+// =============================================================================
+
+/**
+ * Relationship type — what kind of commercial relationship exists.
+ */
+export type RelationshipType = 'active-client' | 'lapsed-client' | 'prospect' | 'partner';
+
+/**
+ * Relationship status — active or archived.
+ * Note: Relationships use "archived" rather than "removed" (as used by Exclusions/Conflicts)
+ * because a lapsed or historical relationship is context that may still be useful.
+ * Archived entries are hidden by default but retrievable.
+ */
+export type RelationshipStatus = 'active' | 'archived';
+
+/**
+ * Agreement type — the kind of formal agreement in place.
+ */
+export type AgreementType = 'msa' | 'psl' | 'framework' | 'other';
+
+/**
+ * Agreement status — lifecycle state of a formal agreement.
+ */
+export type AgreementStatus = 'active' | 'expiring' | 'expired' | 'pending';
+
+/**
+ * Relationship entry from Firestore.
+ * Stored at tenants/{tenantId}/clients/{clientId}/relationships/{relationshipId}
+ */
+export interface RelationshipEntry {
+  /** Firestore document ID (auto-generated) */
+  id?: string;
+  /** The company in the relationship. Max 200 chars. */
+  companyName: string;
+  /** Relationship type: active-client, lapsed-client, prospect, or partner */
+  relationshipType: RelationshipType;
+  /** Which part of the company the relationship covers. Max 200 chars. */
+  brandOrDivision?: string;
+  /** What service or engagement type. Max 200 chars. */
+  service?: string;
+  /** Geographic scope. Max 200 chars. */
+  geography?: string;
+  /** Names for name-dropping. Free text. Max 280 chars. */
+  keyContacts?: string;
+  /** How long the relationship has existed. E.g. "2 years", "Since 2019." Max 100 chars. */
+  tenure?: string;
+  /** Additional context. Max 280 chars. */
+  notes?: string;
+  /** Status: active or archived. Default: active. */
+  status: RelationshipStatus;
+  /** Firebase UID of creator. */
+  addedBy: string;
+  /** Display name of creator. */
+  addedByName: string;
+  /** Creation timestamp (ISO string on client side). */
+  addedAt: string;
+  /** Firebase UID. Null when active. */
+  archivedBy?: string;
+  /** Display name. Null when active. */
+  archivedByName?: string;
+  /** Archive timestamp (ISO string). Null when active. */
+  archivedAt?: string;
+  // --- MSA-PSL detail (optional) ---
+  /** Flag indicating MSA-PSL detail is present. Default: false. */
+  hasAgreement?: boolean;
+  /** Agreement type: msa, psl, framework, or other */
+  agreementType?: AgreementType;
+  /** One-line description of what the agreement covers. Max 280 chars. */
+  agreementScope?: string;
+  /** Agreement start date (ISO string). */
+  startDate?: string;
+  /** Agreement end date (ISO string). Null for open-ended. */
+  endDate?: string;
+  /** Agreement lifecycle status. */
+  agreementStatus?: AgreementStatus;
+  /** Active engagements under this agreement. Max 10 entries, each max 200 chars. */
+  whereWorking?: string[];
+  /** Whitespace — areas in scope with no current activity. Max 10 entries, each max 200 chars. */
+  whereCould?: string[];
+}
+
+/**
+ * Relationship type display configuration — colour-coded badges per spec.
+ */
+export const RELATIONSHIP_TYPE_CONFIG: Record<
+  RelationshipType,
+  { label: string; colour: string; bgColour: string }
+> = {
+  'active-client': { label: 'Active client', colour: '#FFFFFF', bgColour: '#30BAA0' },
+  'lapsed-client': { label: 'Lapsed client', colour: '#FFFFFF', bgColour: '#FCB242' },
+  prospect: { label: 'Prospect', colour: '#FFFFFF', bgColour: '#00A6CE' },
+  partner: { label: 'Partner', colour: '#FFFFFF', bgColour: '#827786' },
+};
+
+/**
+ * Agreement status display configuration — colour-coded badges.
+ */
+export const AGREEMENT_STATUS_CONFIG: Record<
+  AgreementStatus,
+  { label: string; colour: string; bgColour: string }
+> = {
+  active: { label: 'Active', colour: '#059669', bgColour: '#ECFDF5' },
+  expiring: { label: 'Expiring', colour: '#D97706', bgColour: '#FFFBEB' },
+  expired: { label: 'Expired', colour: '#DC2626', bgColour: '#FEF2F2' },
+  pending: { label: 'Pending', colour: '#6B7280', bgColour: '#F3F4F6' },
+};
+
+/**
+ * Agreement type display labels.
+ */
+export const AGREEMENT_TYPE_CONFIG: Record<
+  AgreementType,
+  { label: string }
+> = {
+  msa: { label: 'MSA' },
+  psl: { label: 'PSL' },
+  framework: { label: 'Framework' },
+  other: { label: 'Agreement' },
+};
+
+// =============================================================================
 // Managed Lists
 // =============================================================================
 
